@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador DSS - Reforestación Quebracho Colorado</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        #map { width: 100vw; height: 100vh; }
+        .info-panel {
+            position: absolute; top: 20px; right: 20px; z-index: 1000;
+            background: white; padding: 15px; border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2); width: 320px; max-height: 80vh; overflow-y: auto;
+        }
+        .legend {
+            position: absolute; bottom: 30px; left: 20px; z-index: 1000;
+            background: white; padding: 10px; border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1); font-size: 12px; line-height: 18px;
+        }
+        .legend i { width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.8; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+    
+    <div class="info-panel" id="panel">
+        <h3>Sistema de Soporte de Decisiones (DSS)</h3>
+        <p>Hacé clic sobre un polígono de suelo para analizar sus aptitudes edafoclimáticas y restricciones de ley.</p>
+        <div id="detalle-suelo"></div>
+    </div>
+
+    <div class="legend" id="legend">
+        <h4>Aptitud V4 y Marco Legal</h4>
+        <div><i style="background: #2ebd59"></i> Apto para reforestar y legal</div>
+        <div><i style="background: #e67e22"></i> Apto pero ilegal / excluido</div>
+        <div><i style="background: #e74c3c"></i> No apto</div>
+    </div>
+
+    <script>
+        const map = L.map('map').setView([-26.3, -60.8], 7.5);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        function obtenerColor(clasificacion) {
+            switch (clasificacion) {
+                case 'Apto para reforestar y legal': return '#2ebd59';
+                case 'Apto pero ilegal':             return '#e67e22';
+                default:                             return '#e74c3c';
+            }
+        }
+
+        function estiloFeature(feature) {
+            return {
+                fillColor: obtenerColor(feature.properties.clasificacion_final),
+                weight: 1.5,
+                opacity: 1,
+                color: 'white',
+                fillOpacity: 0.65
+            };
+        }
+
+        function onEachFeature(feature, layer) {
+            layer.on({
+                mouseover: function(e) {
+                    e.target.setStyle({ fillOpacity: 0.85, weight: 2.5 });
+                },
+                mouseout: function(e) {
+                    layer.setStyle(estiloFeature(feature));
+                },
+                click: function(e) {
+                    const props = feature.properties;
+                    const container = document.getElementById('detalle-suelo');
+                    
+                    container.innerHTML = `
+                        <hr>
+                        <strong>ID Polígono:</strong> ${props.id}<br>
+                        <strong>Subgrupo Suelo:</strong> ${props.subgrupo}<br>
+                        <strong>Textura Superficial:</strong> ${props.textura}<br>
+                        <hr>
+                        <strong>Métricas de Idoneidad:</strong><br>
+                        - Score Suelo: ${props.aptitud_suelo}<br>
+                        - Score Lluvia: ${props.aptitud_lluvia}<br>
+                        - Score NDVI: ${props.aptitud_ndvi}<br>
+                        - Aptitud Biofísica Base: ${props.aptitud_biofisica}<br>
+                        <hr>
+                        <strong>Marco de Gobernanza:</strong><br>
+                        - Mascara OTBN: ${props.mascara_otbn === 1 ? '🟡/🟢 Permitido' : '🔴 Restringido'}<br>
+                        - Condición Legal: <b>${props.clasificacion_final}</b><br>
+                        <hr>
+                        <h4 style="margin:5px 0;">Puntaje Final: ${props.aptitud_final}</h4>
+                    `;
+                }
+            });
+        }
+
+        // Llamada a la API de FastAPI en el puerto 8000
+        fetch('http://127.0.0.1:8000/api/aptitud-suelos')
+            .then(response => {
+                if (!response.ok) throw new Error("Error en la respuesta de la red");
+                return response.json();
+            })
+            .then(geoJsonData => {
+                L.geoJSON(geoJsonData, {
+                    style: estiloFeature,
+                    onEachFeature: onEachFeature
+                }).addTo(map);
+                console.log("429 Polígonos renderizados exitosamente.");
+            })
+            .catch(error => {
+                console.error("❌ Error cargando los polígonos:", error);
+                document.getElementById('detalle-suelo').innerHTML = `<p style="color:red;">Error al conectar con la API.</p>`;
+            });
+    </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+earthengine-api
+geopandas
+rasterio
+psycopg2-binary
+sqlalchemy
+geoalchemy2
+pandas
+numpy
+google-auth
