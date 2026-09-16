@@ -4,13 +4,20 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 
+"""
+Modulo backend desarrollado con FastAPI encargado de exponer los resultados del modelo de aptitud forestal a traves de endpoints web REST.
+Funciona como la capa de servicio que conecta la base de datos con cualquier visualizador web interactivo.
+"""
+
 app = FastAPI(
     title="API de Soporte de Decisiones - Reforestación de Quebracho",
     description="Servicios geoespaciales para el visualizador interactivo de aptitud forestal",
     version="1.0.0"
 )
 
-# Permitir CORS para desarrollo local sin restricciones de puerto
+"""
+Implementa FastAPI Middleware para habilitar el Intercambio de Recursos de Origen Cruzado (CORS) sin restricciones de puertos.
+"""
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,10 +41,13 @@ def safe_float(valor):
     except (ValueError, TypeError):
         return 0.00
 
+"""
+Formatea y consolida los 429 polígonos del territorio evaluado bajo la estructura estándar de una `FeatureCollection` geoespacial, inyectando todas las sub-aptitudes calculadas, variables edáficas primarias y el dictamen legal (OTBN) dentro del bloque de `properties` de cada elemento.
+"""
 @app.get("/api/aptitud-suelos")
 def obtener_aptitud_suelos():
     """
-    Consulta PostGIS y retorna los 429 polígonos en formato estándar GeoJSON (EPSG 4326).
+    Ejecuta la consulta SQL directamente en PostGIS transformando de forma eficiente las geometrías complejas de la base de datos al estándar web global EPSG:4326 mediante la función `ST_Transform`.
     """
     query = """
         SELECT 
@@ -59,7 +69,10 @@ def obtener_aptitud_suelos():
         with engine.connect() as connection:
             result = connection.execute(text(query))
             features = []
-            
+
+            """
+            safe_float: Cuenta con una función protectora que captura valores nulos o tipos de datos corruptos provenientes de la base de datos. Redondea automáticamente las métricas físicas y matemáticas a dos decimales, garantizando un payload JSON liviano y un parseo sin errores en el navegador.
+            """
             for row in result:
                 feature = {
                     "type": "Feature",

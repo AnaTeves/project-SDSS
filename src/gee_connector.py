@@ -3,12 +3,19 @@ import json
 import pandas as pd
 from google.oauth2 import service_account
 
+"""
+Clase diseñada para interactuar con la API de Google Earth Engine utilizando una cuenta de servicio.
+Su objetivo principal es procesar analisis geoespaciales pesados directamente en la nube.
+"""
 class GEEConnector:
     def __init__(self, key_file='config/credentials.json', project_id='tesis-492901'):
         self.key_file = key_file
         self.project_id = project_id
         self._autenticar()
 
+    """
+    Automatiza la conexión segura con los servidores de GEE utilizando el archivo de credenciales de la cuenta de servicio (`config/credentials.json`) y el ID del proyecto.
+    """
     def _autenticar(self):
         scopes = ['https://www.googleapis.com/auth/earthengine']
         credentials = service_account.Credentials.from_service_account_file(
@@ -18,12 +25,14 @@ class GEEConnector:
         ee.Initialize(credentials=credentials, project=self.project_id)
         print("Conexion exitosa con Google Earth Engine Assets")
 
+    """
+    Conecta de forma remota con los Assets privados almacenados en GEE a una resolución espacial de 30 metros.
+    """
     def obtener_capas_ambientales(self):
-        """Devuelve las imágenes ráster almacenadas en los Assets de GEE."""
         return {
-            'ndvi': ee.Image('users/lutevestessaro/NDVI_Historico_30m').rename('val_ndvi'),
-            'lluvia': ee.Image('users/lutevestessaro/Precipitacion_Anual_30m').rename('val_lluvia'),
-            'uso': ee.Image('users/lutevestessaro/Uso_Suelo_Actual_30m').rename('val_uso_suelo')
+            'ndvi': ee.Image('users/lutevestessaro/NDVI_Historico_30m').rename('val_ndvi'), # Indice de vegetacion de diferencia normalizada
+            'lluvia': ee.Image('users/lutevestessaro/Precipitacion_Anual_30m').rename('val_lluvia'), # Precipitacion anual promedio
+            'uso': ee.Image('users/lutevestessaro/Uso_Suelo_Actual_30m').rename('val_uso_suelo') # Capa de clasificacion de cobertura y uso de suelo
         }
 
     def enriquecer_gdf(self, suelos_gdf):
@@ -40,7 +49,7 @@ class GEEConnector:
         geojson_data = json.loads(suelos_gdf.to_json())
         fc = ee.FeatureCollection(geojson_data)
 
-        # Cómputo distribuido en la nube
+        # Ejecuta un reductor espacial para calcular el promedio de los valores de NDVI, lluvias y uso de suelo que caen dentro de cada poligono
         resultados_fc = multibanda.reduceRegions(
             collection=fc,
             reducer=ee.Reducer.mean(),

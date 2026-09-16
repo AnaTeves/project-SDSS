@@ -1,5 +1,8 @@
 import numpy as np
 
+"""
+Clase encargada de calibrar y validar las prioridades macro del modelo jerarquico. Utiliza algebra lineal para procesar matrices de comparacion por pares y extraer pesos ponderados con validacion estadistica de consistencia.
+"""
 class AHPCalculator:
     def __init__(self):
         """
@@ -38,11 +41,12 @@ class AHPCalculator:
         vector_principal = np.real(vectores_propios[:, idx_max])
         pesos_normalizados = vector_principal / np.sum(vector_principal)
         
-        # Validación de consistencia
+        # Validación de consistencia: utiliza el indice de aleatoriedad estandar para matrices
         ci = (lambda_max - n) / (n - 1) if n > 1 else 0
         ri = self._ri.get(n, 1.0)
         cr = ci / ri if ri > 0 else 0
-        
+
+        # Detiene el proceso de forma segura si la matriz supera el umbral critico de Saaty, garantizando la validez logica de las ponderaciones
         if cr >= 0.10:
             raise ValueError(f"Matriz AHP inconsistente (CR = {cr:.4f}).")
             
