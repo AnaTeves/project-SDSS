@@ -43,28 +43,55 @@ class GEEConnector:
         print("Solicitando cómputo espacial a los clusteres de Google Earth Engine")
         capas = self.obtener_capas_ambientales()
         
-        # Unificar las 3 capas en una sola imagen multibanda
-        multibanda = ee.Image.cat([capas['ndvi'], capas['lluvia'], capas['uso']])
-
         geojson_data = json.loads(suelos_gdf.to_json())
         fc = ee.FeatureCollection(geojson_data)
 
-        # Ejecuta un reductor espacial para calcular el promedio de los valores de NDVI, lluvias y uso de suelo que caen dentro de cada poligono
-        resultados_fc = multibanda.reduceRegions(
+        # separacion de reducciones por tipo de variable (Promedio vs Moda)
+        multibanda_continua = ee.Image.cat([capas['ndvi'], capas['lluvia']])
+        capa_categorica = capas['uso']
+
+        # Reducción 1: Promedio (Mean) para NDVI y Lluvia
+        fc_continua = multibanda_continua.reduceRegions(
             collection=fc,
             reducer=ee.Reducer.mean(),
             scale=30
         )
+        
+        # Reducción 2: Mayoría (Mode) para Uso de Suelo
+        fc_categorica = capa_categorica.reduceRegions(
+            collection=fc,
+            reducer=ee.Reducer.mode(),
+            scale=30
+        )
 
-        # Retornar propiedades y acoplarlas al GeoDataFrame original
-        features = resultados_fc.getInfo()['features']
-        datos_extraidos = [f['properties'] for f in features]
-        df_metrics = pd.DataFrame(datos_extraidos)
+        # Manejo de excepciones para evitar colapsos de red
+        try:
+            print("Descargando métricas continuas (NDVI, Lluvia)...")
+            datos_cont = [f['properties'] for f in fc_continua.getInfo()['features']]
+            df_cont = pd.DataFrame(datos_cont)
+            
+            print("Descargando métricas categóricas (Uso de Suelo)...")
+            datos_cat = [f['properties'] for f in fc_categorica.getInfo()['features']]
+            df_cat = pd.DataFrame(datos_cat)
+        except Exception as e:
+            raise ConnectionError(f"Error al obtener datos de Earth Engine: {e}")
 
-        # Mapear columnas calculadas
-        suelos_gdf['val_ndvi'] = df_metrics['val_ndvi']
-        suelos_gdf['val_lluvia'] = df_metrics['val_lluvia']
-        suelos_gdf['val_uso_suelo'] = df_metrics['val_uso_suelo'].fillna(0).astype(int)
+        # Renombrar la columna de la moda de MapBiomas para mantener consistencia
+        if 'mode' in df_cat.columns:
+            df_cat.rename(columns={'mode': 'val_uso_suelo'}, inplace=True)
 
-        print("Datos ambientales acoplados exitosamente desde la nube")
+        # Fusión (Join) segura usando id
+        df_metrics = pd.merge(
+            df_cont[['id', 'val_ndvi', 'val_lluvia']], 
+            df_cat[['id', 'val_uso_suelo']], 
+            on='id'
+        )
+
+        # se inyectan los datos calculados al GeoDataFrame original
+        suelos_gdf = suelos_gdf.merge(df_metrics, on='id', how='left')
+        
+        # Sanitización final de la capa de MapBiomas
+        suelos_gdf['val_uso_suelo'] = suelos_gdf['val_uso_suelo'].fillna(0).astype(int)
+
+        print("Datos ambientales acoplados y alineados exitosamente desde la nube.")
         return suelos_gdf
