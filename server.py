@@ -59,6 +59,7 @@ def obtener_aptitud_suelos():
             aptitud_ndvi,
             aptitud_biofisica,
             mascara_otbn,
+            prop_otbn,
             clasificacion_final,
             aptitud_final,
             ST_AsGeoJSON(ST_Transform(geom, 4326))::json AS geometria
@@ -86,6 +87,7 @@ def obtener_aptitud_suelos():
                         "aptitud_ndvi": safe_float(row.aptitud_ndvi),
                         "aptitud_biofisica": safe_float(row.aptitud_biofisica),
                         "mascara_otbn": int(row.mascara_otbn) if row.mascara_otbn is not None else 0,
+                        "prop_otbn": safe_float(row.prop_otbn),
                         "clasificacion_final": row.clasificacion_final if row.clasificacion_final else "No apto",
                         "aptitud_final": safe_float(row.aptitud_final)
                     }

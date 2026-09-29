@@ -16,7 +16,7 @@ Configura el entorno, coordina la comunicación entre las APIs en la nube y las 
 """
 
 # Abre el archivo ráster local de la OTBN (`assets/capa_otbn.tif`) de forma eficiente mediante `rasterio`.
-def aplicar_mascara_otbn(suelos_gdf, ruta_otbn, umbral_permitido=0.85):
+def aplicar_mascara_otbn(suelos_gdf, ruta_otbn, umbral_permitido=0.98):
 
     if not os.path.exists(ruta_otbn):
         raise FileNotFoundError(f"No se encontró el ráster de la OTBN en la ruta especificada: {ruta_otbn}")
@@ -25,6 +25,7 @@ def aplicar_mascara_otbn(suelos_gdf, ruta_otbn, umbral_permitido=0.85):
     with rasterio.open(ruta_otbn) as raster:
         suelos_raster_crs = suelos_gdf.to_crs(raster.crs)
         mascara = []
+        proporciones = []
 
         for geometria in suelos_raster_crs.geometry:
             try:
@@ -39,23 +40,29 @@ def aplicar_mascara_otbn(suelos_gdf, ruta_otbn, umbral_permitido=0.85):
                 
                 if valores_validos.size > 0:
                     proporcion_permitida = np.mean(valores_validos == 1)
+
+                    proporciones.append(proporcion_permitida)
+
                     mascara.append(1 if proporcion_permitida >= umbral_permitido else 0)
                 else:
+                    proporciones.append(0)
                     mascara.append(0) # si no hay datos se restringe con 0
             except ValueError:
+                proporciones.append(0)
                 mascara.append(0) # fuera de los limites se restringe 0 por precaucion
 
     suelos_gdf = suelos_gdf.copy()
     suelos_gdf['val_otbn'] = pd.Series(mascara, index=suelos_gdf.index).fillna(0).astype(int)
-    return suelos_gdf
 
+    suelos_gdf['prop_otbn'] = pd.Series(proporciones, index=suelos_gdf.index).fillna(0.0)
+    return suelos_gdf
 
 def ejecutar_pipeline():
     db = DBConnector()
     gee = GEEConnector(key_file='config/credentials.json', project_id='tesis-492901')
 
     # Conecta con PostGIS e importa los registros vectoriales de la tabla `"proc_suelos_chaco"`.
-    print(">> Leyendo capas vectoriales desde PostgreSQL/PostGIS...")
+    print("Leyendo capas vectoriales desde PostgreSQL/PostGIS")
     query_suelos = """
         SELECT id, geom, sgrup_sue1, text_sups1, drenaje_s1, alcalin_s1
         FROM "proc_suelos_chaco";
@@ -66,7 +73,7 @@ def ejecutar_pipeline():
     # Ejecuta la máscara de la OTBN sobre los polígonos importados y audita la distribución de resultados.
     print("Aplicando cruce espacial local con la capa legal de la OTBN")
     ruta_otbn = os.path.join('assets', 'capa_otbn.tif')
-    suelos_gdf = aplicar_mascara_otbn(suelos_gdf, ruta_otbn, umbral_permitido=1.0)
+    suelos_gdf = aplicar_mascara_otbn(suelos_gdf, ruta_otbn, umbral_permitido=0.98)
 
     print("Distribución de la columna 'val_otbn' (1=Permitido, 0=Restringido):")
     print(suelos_gdf['val_otbn'].value_counts())
@@ -83,7 +90,6 @@ def ejecutar_pipeline():
     print("Exportando resultados a la base de datos")
     db.guardar_resultado(resultado_final, nombre_tabla='mapa_aptitud_final')
     print("PIPELINE FINALIZADO")
-
 
 if __name__ == '__main__':
     ejecutar_pipeline()
