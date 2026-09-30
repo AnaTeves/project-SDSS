@@ -3,7 +3,7 @@
 Proyecto Final de Carrera — Licenciatura en Sistemas de Información (FACENA - UNNE)
 Autora: Ana Luz Teves Tessaro | Profesor Orientador: Lic. Darío Oscar Villegas
 
-Sistema de soporte de decisiones geoespaciales basado en una arquitectura híbrida (Cloud-Local) para evaluar la aptitud biofísica y la viabilidad legal (OTBN) en la reforestación del Quebracho Colorado (Schinopsis balansae) en la Provincia del Chaco, Argentina.
+SITRA es un Sistema de Información Territorial para la Reforestación y Aptitud Ambiental basado en una arquitectura híbrida (Cloud-Local). Evalua la aptitud biofísica y la viabilidad legal (Ordenamiento Territorial) en los planes de manejo para la reforestación del Quebracho Colorado (Schinopsis balansae) en la Provincia del Chaco, Argentina.
 
 ---
 
