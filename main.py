@@ -9,6 +9,7 @@ from shapely.geometry import mapping
 from src.db_connector import DBConnector
 from src.gee_connector import GEEConnector
 from src.reforestacion_pipeline import ReforestationPipeline
+import time
 
 """
 Script ejecutor central del proyecto.
@@ -58,6 +59,7 @@ def aplicar_mascara_otbn(suelos_gdf, ruta_otbn, umbral_permitido=0.98):
     return suelos_gdf
 
 def ejecutar_pipeline():
+    tiempo_inicio = time.perf_counter()
     db = DBConnector()
     gee = GEEConnector(key_file='config/credentials.json', project_id='tesis-492901')
 
@@ -89,7 +91,10 @@ def ejecutar_pipeline():
     # Exporta el GeoDataFrame final consolidado de vuelta a PostGIS en la tabla `'mapa_aptitud_final'`.
     print("Exportando resultados a la base de datos")
     db.guardar_resultado(resultado_final, nombre_tabla='mapa_aptitud_final')
+    tiempo_fin = time.perf_counter()
+    tiempo_total = tiempo_fin - tiempo_inicio
     print("PIPELINE FINALIZADO")
+    print(f"MÉTRICA DE RENDIMIENTO: Tiempo total de procesamiento: {tiempo_total:.2f} segundos.")
 
 if __name__ == '__main__':
     ejecutar_pipeline()
