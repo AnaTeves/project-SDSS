@@ -218,7 +218,7 @@
             });
         }
 
-        fetch('http://127.0.0.1:8000/api/aptitud-suelos')
+        fetch('https://backend-sdss.onrender.com/api/aptitud-suelos')
             .then(response => {
                 if (!response.ok) throw new Error("Error en la respuesta de la red");
                 return response.json();
