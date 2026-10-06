@@ -3,6 +3,10 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde el archivo .env
+load_dotenv()
 
 """
 Modulo backend desarrollado con FastAPI encargado de exponer los resultados del modelo de aptitud forestal a traves de endpoints web REST.
@@ -26,11 +30,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://postgres:postgre@localhost:5432/postgres"
-)
-engine = create_engine(DB_URL)
+# Leer la URL desde la variable de entorno
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("ERROR: DATABASE_URL no está configurada en el archivo .env")
+
+# rear el motor de conexión
+engine = create_engine(DATABASE_URL)
 
 def safe_float(valor):
     """Protege la serialización JSON contra valores nulos de la base de datos."""
