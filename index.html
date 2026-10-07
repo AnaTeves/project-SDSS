@@ -3,69 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Favicon con Emoji de Árbol Vectorial -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌳</text></svg>">
-    <title>SITRA Chaco</title>
+    <title>SITRA Chaco - SDSS Quebracho</title>
+
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
-    <!-- Leaflet & Google Fonts -->
+    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     
-    <style>
-        * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
-        body { margin: 0; padding: 0; background: #f4f6f8; }
-        #map { width: 100vw; height: 100vh; z-index: 1; }
-
-        /* Panel Lateral UI DSS */
-        .info-panel {
-            position: absolute; top: 20px; right: 20px; z-index: 1000;
-            background: #ffffff; padding: 20px; border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.15); width: 360px; max-height: 90vh;
-            overflow-y: auto; border: 1px solid #e1e8ed;
-        }
-
-        .panel-header { border-bottom: 2px solid #eef2f5; padding-bottom: 10px; margin-bottom: 15px; }
-        .panel-header h2 { margin: 0; font-size: 18px; color: #1a252c; font-weight: 700; }
-        .panel-header p { margin: 4px 0 0; font-size: 12px; color: #627d98; }
-
-        /* Tarjetas y Badges */
-        .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
-        .card-title { font-size: 11px; text-transform: uppercase; tracking: 0.5px; color: #64748b; font-weight: 700; margin-bottom: 8px; }
-
-        .badge {
-            display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;
-        }
-        .badge-success { background: #dcfce7; color: #15803d; }
-        .badge-warning { background: #fef3c7; color: #b45309; }
-        .badge-danger  { background: #fee2e2; color: #b91c1c; }
-
-        /* Barras de Progreso */
-        .metric-row { margin-bottom: 8px; }
-        .metric-label { display: flex; justify-content: space-between; font-size: 12px; color: #334155; margin-bottom: 3px; }
-        .progress-bar-bg { background: #e2e8f0; height: 6px; border-radius: 3px; overflow: hidden; }
-        .progress-bar-fill { height: 100%; background: #3b82f6; border-radius: 3px; transition: width 0.3s ease; }
-
-        /* Diagnóstico */
-        .diagnostic-box { padding: 10px; border-radius: 6px; font-size: 12px; line-height: 1.4; margin-top: 8px; }
-        .diagnostic-box.fail { background: #fff1f2; border-left: 4px solid #f43f5e; color: #881337; }
-        .diagnostic-box.pass { background: #f0fdf4; border-left: 4px solid #22c55e; color: #14532d; }
-
-        /* Leyenda */
-        .legend {
-            position: absolute; bottom: 30px; left: 20px; z-index: 1000;
-            background: white; padding: 12px 15px; border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 12px; border: 1px solid #e1e8ed;
-        }
-        .legend h4 { margin: 0 0 8px; font-size: 12px; font-weight: 700; color: #1e293b; }
-        .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
-        .legend-color { width: 14px; height: 14px; border-radius: 3px; margin-right: 8px; }
-    </style>
+    <!-- Estilos Propios -->
+    <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
 
+    <!-- Barra Superior Flotante -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <h1 class="brand-title">SDSS Quebracho</h1>
+            <div class="search-box">
+                <input type="number" id="search-polygon-id" placeholder="Buscar ID (ej. 59)..." />
+                <button id="btn-search">🔍</button>
+            </div>
+        </div>
+
+        <div class="top-bar-right">
+            <span id="user-badge" class="badge visitor">Modo: Visitante</span>
+            <button id="btn-login-trigger" class="btn-primary">Iniciar Sesión</button>
+            <button id="btn-logout" class="btn-secondary hidden">Cerrar Sesión</button>
+        </div>
+    </header>
+
+    <!-- Modal de Login -->
+    <div id="login-modal" class="modal hidden">
+        <div class="modal-content">
+            <span id="close-modal" class="close-btn">&times;</span>
+            <h2>Acceso Administrador</h2>
+            <form id="login-form">
+                <label for="login-email">Correo Electrónico:</label>
+                <input type="email" id="login-email" required placeholder="admin@ejemplo.com" />
+
+                <label for="login-password">Contraseña:</label>
+                <input type="password" id="login-password" required placeholder="••••••••" />
+
+                <button type="submit" class="btn-primary full-width">Ingresar</button>
+            </form>
+            <p id="login-error" class="error-msg hidden"></p>
+        </div>
+    </div>
+
+    <!-- Contenedor del Mapa -->
     <div id="map"></div>
     
+    <!-- Panel Lateral UI DSS -->
     <div class="info-panel">
         <div class="panel-header">
             <h2>Sistema de Soporte de Decisiones</h2>
@@ -74,11 +68,12 @@
         
         <div id="detalle-suelo">
             <p style="color: #64748b; font-size: 13px; text-align: center; margin-top: 20px;">
-                Selecciona un polígono en el mapa para inspeccionar sus restricciones y puntaje de aptitud.
+                Selecciona un polígono en el mapa o búscalo por ID para inspeccionar sus restricciones y puntaje.
             </p>
         </div>
     </div>
 
+    <!-- Leyenda -->
     <div class="legend">
         <h4>Leyenda de aptitud y legalidad</h4>
         <div class="legend-item"><div class="legend-color" style="background: #22c55e;"></div> Apto Legal (Reforestación)</div>
@@ -86,153 +81,7 @@
         <div class="legend-item"><div class="legend-color" style="background: #ef4444;"></div> No Apto (Biofísico / Cobertura)</div>
     </div>
 
-    <script>
-        const map = L.map('map').setView([-26.3, -60.8], 7.5);
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-
-        function obtenerColor(clasificacion) {
-            switch (clasificacion) {
-                case 'Apto para reforestar y legal': return '#22c55e';
-                case 'Apto pero ilegal':             return '#f59e0b';
-                default:                             return '#ef4444';
-            }
-        }
-
-        function estiloFeature(feature) {
-            return {
-                fillColor: obtenerColor(feature.properties.clasificacion_final),
-                weight: 1.2,
-                opacity: 1,
-                color: '#ffffff',
-                fillOpacity: 0.7
-            };
-        }
-
-        function generarDiagnostico(props) {
-    let motivos = [];
-    
-    // Formatear el porcentaje de OTBN
-    const propOtbnVal = (props.prop_otbn !== null && props.prop_otbn !== undefined) 
-        ? (props.prop_otbn * 100).toFixed(1) 
-        : "0.0";
-
-    // REGLA MAESTRA: Si el puntaje final es 0 o no es apto/legal
-    if (props.aptitud_final === 0 || props.clasificacion_final !== 'Apto para reforestar y legal') {
-        
-        // 1. Causa Legal (OTBN)
-        if (props.mascara_otbn === 0) {
-            motivos.push(`<b>Restricción Legal (OTBN):</b> Cobertura permitida es del ${propOtbnVal}% (Requerido ≥ 98%).`);
-        }
-        
-        // 2. Causa Biofísica General
-        if (props.aptitud_biofisica < 0.65) {
-            motivos.push(`<b>Baja aptitud biofísica:</b> Puntaje insuficiente (${props.aptitud_biofisica.toFixed(2)}) por limitantes hídricas, edáficas o vegetativas.`);
-        }
-
-        // 3. Causa por Cobertura Actual (MapBiomas)
-        // Se activa si pasó la OTBN y la Biofísica básica, pero el backend igual descartó el terreno
-        if (motivos.length === 0) {
-            motivos.push(`<b>Restricción de uso del suelo (MapBiomas):</b> Cobertura actual no idónea para reforestación (ej. bosque denso consolidado, cuerpo de agua o área urbana/agrícola).`);
-        }
-
-        return `
-            <div class="diagnostic-box fail">
-                <b>🔴 Causa de exclusión:</b>
-                <ul style="margin: 5px 0 0; padding-left: 15px;">
-                    ${motivos.map(m => `<li>${m}</li>`).join('')}
-                </ul>
-            </div>`;
-    }
-
-    // Terreno completamente válido (Puntaje final > 0)
-    return `
-        <div class="diagnostic-box pass">
-            <b>🟢 Terreno válido:</b> Cumple con los requisitos legales (OTBN ${propOtbnVal}%) e idoneidad edafoclimática.
-        </div>`;
-    }
-
-        function crearBarraProgreso(label, valor) {
-            const porcentaje = Math.min(Math.max(valor * 100, 0), 100).toFixed(0);
-            return `
-                <div class="metric-row">
-                    <div class="metric-label">
-                        <span>${label}</span>
-                        <b>${valor.toFixed(2)}</b>
-                    </div>
-                    <div class="progress-bar-bg">
-                        <div class="progress-bar-fill" style="width: ${porcentaje}%;"></div>
-                    </div>
-                </div>`;
-        }
-
-        function onEachFeature(feature, layer) {
-            layer.on({
-                mouseover: function(e) {
-                    e.target.setStyle({ fillOpacity: 0.9, weight: 2.5 });
-                },
-                mouseout: function(e) {
-                    layer.setStyle(estiloFeature(feature));
-                },
-                click: function(e) {
-                    const props = feature.properties;
-                    const container = document.getElementById('detalle-suelo');
-                    
-                    let badgeClass = 'badge-danger';
-                    if (props.clasificacion_final === 'Apto para reforestar y legal') badgeClass = 'badge-success';
-                    else if (props.clasificacion_final === 'Apto pero ilegal') badgeClass = 'badge-warning';
-
-                    container.innerHTML = `
-                        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 14px; font-weight: 700;">Polígono #${props.id}</span>
-                            <span class="badge ${badgeClass}">${props.clasificacion_final}</span>
-                        </div>
-
-                        ${generarDiagnostico(props)}
-
-                        <div class="card" style="margin-top: 12px;">
-                            <div class="card-title">Métricas de Idoneidad Biofísica</div>
-                            ${crearBarraProgreso('Aptitud Suelo', props.aptitud_suelo)}
-                            ${crearBarraProgreso('Aptitud Lluvia', props.aptitud_lluvia)}
-                            ${crearBarraProgreso('NDVI', props.aptitud_ndvi)}
-                            <hr style="border:0; border-top: 1px solid #e2e8f0; margin: 8px 0;">
-                            ${crearBarraProgreso('Puntaje biofísico base', props.aptitud_biofisica)}
-                        </div>
-
-                        <div class="card">
-                            <div class="card-title">Atributos del suelo</div>
-                            <div style="font-size: 12px; color: #475569;">
-                                <b>Subgrupo:</b> ${props.subgrupo || 'Sin datos'}<br>
-                                <b>Textura Superficial:</b> ${props.textura || 'Sin datos'}
-                            </div>
-                        </div>
-
-                        <div style="text-align: center; padding: 10px; background: #e2e8f0; border-radius: 8px; margin-top: 10px;">
-                            <span style="font-size: 11px; text-transform: uppercase; color: #475569; font-weight: 700;">Puntaje final</span>
-                            <div style="font-size: 22px; font-weight: 700; color: #0f172a;">${props.aptitud_final.toFixed(2)}</div>
-                        </div>
-                    `;
-                }
-            });
-        }
-
-        fetch('https://backend-sdss.onrender.com/api/aptitud-suelos')
-            .then(response => {
-                if (!response.ok) throw new Error("Error en la respuesta de la red");
-                return response.json();
-            })
-            .then(geoJsonData => {
-                L.geoJSON(geoJsonData, {
-                    style: estiloFeature,
-                    onEachFeature: onEachFeature
-                }).addTo(map);
-            })
-            .catch(error => {
-                console.error("❌ Error cargando los polígonos:", error);
-                document.getElementById('detalle-suelo').innerHTML = `<p style="color:red; font-size: 12px;">Error de conexión con la API FastAPI.</p>`;
-            });
-    </script>
+    <!-- Script Principal -->
+    <script src="js/app.js" defer></script>
 </body>
 </html>
