@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌳</text></svg>">
-    <title>SITRA Chaco - SDSS Quebracho</title>
+    <title>SITRA</title>
 
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -30,6 +30,14 @@
                 <button id="btn-search">🔍</button>
             </div>
         </div>
+
+        <select id="select-departamento" class="select-filter">
+            <option value="TODOS">Todos los Departamentos</option>
+            <!-- Las opciones se pueden llenar manualmente o dinámicamente -->
+            <option value="Almirante Brown">Almirante Brown</option>
+            <option value="General Güemes">General Güemes</option>
+            <option value="Independencia">Independencia</option>
+        </select>
 
         <div class="top-bar-right">
             <span id="user-badge" class="badge visitor">Modo: Visitante</span>

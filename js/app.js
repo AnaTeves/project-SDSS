@@ -4,6 +4,9 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Almacena la capa que el usuario tiene seleccionada actualmente
+let capaSeleccionada = null;
+
 // Diccionario para almacenar las capas por ID y permitir el buscador
 const capasPorId = {};
 
@@ -31,6 +34,26 @@ function estiloFeature(feature) {
         color: '#ffffff',
         fillOpacity: 0.7
     };
+}
+
+function resaltarPoligono(layer) {
+    // Si ya había otro polígono seleccionado, restaurar su estilo original
+    if (capaSeleccionada && capaSeleccionada !== layer) {
+        capaSeleccionada.setStyle(estiloFeature(capaSeleccionada.feature));
+    }
+
+    // Guardar la nueva capa seleccionada
+    capaSeleccionada = layer;
+
+    // Aplicar estilo destacado (borde negro grueso y opacidad alta)
+    layer.setStyle({
+        color: '#0f172a',     // Borde oscuro/negro muy visible
+        weight: 4,            // Borde grueso
+        fillOpacity: 0.95     // Mayor opacidad
+    });
+
+    // Traer la capa al frente para que el borde no quede tapado por parcelas vecinas
+    layer.bringToFront();
 }
 
 function generarDiagnostico(props) {
@@ -80,6 +103,7 @@ function crearBarraProgreso(label, valor) {
 }
 
 function seleccionarPoligono(feature, layer) {
+    resaltarPoligono(layer);
     const props = feature.properties;
     const container = document.getElementById('detalle-suelo');
     
@@ -126,9 +150,20 @@ function onEachFeature(feature, layer) {
     }
 
     layer.on({
-        mouseover: function(e) { e.target.setStyle({ fillOpacity: 0.9, weight: 2.5 }); },
-        mouseout: function(e) { layer.setStyle(estiloFeature(feature)); },
-        click: function(e) { seleccionarPoligono(feature, layer); }
+        mouseover: function(e) {
+            if (layer !== capaSeleccionada) {
+                e.target.setStyle({ fillOpacity: 0.9, weight: 2.5 });
+            }
+        },
+        mouseout: function(e) {
+            // Solo limpia el estilo si NO es el polígono seleccionado
+            if (layer !== capaSeleccionada) {
+                layer.setStyle(estiloFeature(feature));
+            }
+        },
+        click: function(e) {
+            seleccionarPoligono(feature, layer);
+        }
     });
 }
 
@@ -159,7 +194,7 @@ function ejecutarBusqueda() {
 
     const layer = capasPorId[idBuscado];
     if (layer) {
-        map.flyToBounds(layer.getBounds(), { maxZoom: 12 });
+        map.panTo(layer.getBounds().getCenter());
         seleccionarPoligono(layer.feature, layer);
     } else {
         alert(`No se encontró el polígono con ID #${idBuscado}`);
@@ -220,4 +255,30 @@ function actualizarInterfazUsuario(user) {
 
 supabaseClient.auth.getSession().then(({ data: { session } }) => {
     if (session) actualizarInterfazUsuario(session.user);
+});
+
+// --- FILTRO POR DEPARTAMENTO ---
+const selectDept = document.getElementById('select-departamento');
+
+selectDept.addEventListener('change', (e) => {
+    const deptSeleccionado = e.target.value;
+    const capasVisibles = [];
+
+    Object.values(capasPorId).forEach(layer => {
+        // Asegúrate de usar el nombre exacto de la propiedad/columna que viene de Supabase (ej. 'departamento' o 'depto')
+        const deptPoligono = layer.feature.properties.departamento; 
+
+        if (deptSeleccionado === 'TODOS' || deptPoligono === deptSeleccionado) {
+            if (!map.hasLayer(layer)) map.addLayer(layer);
+            capasVisibles.push(layer);
+        } else {
+            if (map.hasLayer(layer)) map.removeLayer(layer);
+        }
+    });
+
+    // Opcional: Ajustar el zoom automático al grupo de polígonos filtrados
+    if (capasVisibles.length > 0 && deptSeleccionado !== 'TODOS') {
+        const grupo = L.featureGroup(capasVisibles);
+        map.flyToBounds(grupo.getBounds(), { padding: [20, 20] });
+    }
 });
