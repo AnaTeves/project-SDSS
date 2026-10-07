@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌳</text></svg>">
-    <title>SITRA</title>
+    <title>SITRA Chaco</title>
 
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -26,12 +26,12 @@
             <div class="modal-header-logo">
                 <span class="logo-icon">🌳</span>
                 <h2>SITRA Chaco</h2>
-                <p>Sistema de Soporte de Decisiones Territorial</p>
+                <p>Sistema de soporte de decisiones para la restauración y la conservación del Quebracho Colorado</p>
             </div>
             
             <div class="access-options">
                 <!-- Botón Visitante -->
-                <button id="btn-enter-visitor" class="btn-visitor">
+                <button id="btn-enter-visitor" class="btn-visitor" type="button">
                     <span class="btn-icon">👁️</span>
                     <div class="btn-text">
                         <strong>Ingresar como visitante</strong>
@@ -42,7 +42,7 @@
                 <div class="divider"><span>o acceso institucional</span></div>
 
                 <!-- Botón para desplegar Form Admin -->
-                <button id="btn-toggle-admin" class="btn-outline">
+                <button id="btn-toggle-admin" class="btn-outline" type="button">
                     🔐 Iniciar Sesión como Administrador
                 </button>
             </div>
@@ -83,24 +83,6 @@
             <button id="btn-logout" class="btn-secondary hidden">Cerrar Sesión</button>
         </div>
     </header>
-
-    <!-- Modal de Login -->
-    <div id="login-modal" class="modal hidden">
-        <div class="modal-content">
-            <span id="close-modal" class="close-btn">&times;</span>
-            <h2>Acceso Administrador</h2>
-            <form id="login-form">
-                <label for="login-email">Correo Electrónico:</label>
-                <input type="email" id="login-email" required placeholder="admin@ejemplo.com" />
-
-                <label for="login-password">Contraseña:</label>
-                <input type="password" id="login-password" required placeholder="••••••••" />
-
-                <button type="submit" class="btn-primary full-width">Ingresar</button>
-            </form>
-            <p id="login-error" class="error-msg hidden"></p>
-        </div>
-    </div>
 
     <!-- Contenedor del Mapa -->
     <div id="map"></div>
