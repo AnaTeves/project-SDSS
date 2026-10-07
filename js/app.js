@@ -37,7 +37,6 @@ function estiloFeature(feature) {
 }
 
 function resaltarPoligono(layer) {
-    // Si ya había otro polígono seleccionado, restaurar su estilo original
     if (capaSeleccionada && capaSeleccionada !== layer) {
         capaSeleccionada.setStyle(estiloFeature(capaSeleccionada.feature));
     }
@@ -47,8 +46,8 @@ function resaltarPoligono(layer) {
 
     // Aplicar estilo destacado (borde negro grueso y opacidad alta)
     layer.setStyle({
-        color: '#0f172a',     // Borde oscuro/negro muy visible
-        weight: 4,            // Borde grueso
+        color: '#161d2d',     // Borde oscuro/negro muy visible
+        weight: 3,            // Borde grueso
         fillOpacity: 0.95     // Mayor opacidad
     });
 
@@ -255,30 +254,4 @@ function actualizarInterfazUsuario(user) {
 
 supabaseClient.auth.getSession().then(({ data: { session } }) => {
     if (session) actualizarInterfazUsuario(session.user);
-});
-
-// --- FILTRO POR DEPARTAMENTO ---
-const selectDept = document.getElementById('select-departamento');
-
-selectDept.addEventListener('change', (e) => {
-    const deptSeleccionado = e.target.value;
-    const capasVisibles = [];
-
-    Object.values(capasPorId).forEach(layer => {
-        // Asegúrate de usar el nombre exacto de la propiedad/columna que viene de Supabase (ej. 'departamento' o 'depto')
-        const deptPoligono = layer.feature.properties.departamento; 
-
-        if (deptSeleccionado === 'TODOS' || deptPoligono === deptSeleccionado) {
-            if (!map.hasLayer(layer)) map.addLayer(layer);
-            capasVisibles.push(layer);
-        } else {
-            if (map.hasLayer(layer)) map.removeLayer(layer);
-        }
-    });
-
-    // Opcional: Ajustar el zoom automático al grupo de polígonos filtrados
-    if (capasVisibles.length > 0 && deptSeleccionado !== 'TODOS') {
-        const grupo = L.featureGroup(capasVisibles);
-        map.flyToBounds(grupo.getBounds(), { padding: [20, 20] });
-    }
 });
