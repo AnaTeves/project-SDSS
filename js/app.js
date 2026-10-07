@@ -10,6 +10,39 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let capaSeleccionada = null;
 const capasPorId = {};
 
+async function registrarAcceso(rol, email = 'anonimo') {
+    try {
+        await supabaseClient
+            .from('registros_acceso')
+            .insert([{ 
+                rol_usuario: rol, 
+                email: email 
+            }]);
+        console.log(`Acceso registrado: ${rol}`);
+    } catch (err) {
+        console.error("Error registrando acceso:", err);
+    }
+}
+
+async function registrarConsultaPoligono(idPoligono) {
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        const email = session?.user?.email || 'anonimo';
+        const rol = session?.user ? 'admin' : 'visitante';
+
+        await supabaseClient
+            .from('registros_acceso')
+            .insert([{ 
+                rol_usuario: rol, 
+                email: email,
+                poligono_consultado: idPoligono
+            }]);
+        console.log(`Consulta registrada para el polígono #${idPoligono}`);
+    } catch (err) {
+        console.error("Error registrando consulta de polígono:", err);
+    }
+}
+
 // ==========================================
 // INICIALIZACIÓN DEL MAPA LEAFLET
 // ==========================================
@@ -103,6 +136,9 @@ function crearBarraProgreso(label, valor) {
 function seleccionarPoligono(feature, layer) {
     resaltarPoligono(layer);
     const props = feature.properties;
+    if (props.id) {
+        registrarConsultaPoligono(props.id);
+    }
     const container = document.getElementById('detalle-suelo');
     
     let badgeClass = 'badge-danger';
