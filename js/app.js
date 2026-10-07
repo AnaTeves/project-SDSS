@@ -1,23 +1,25 @@
-// --- CONFIGURACIÓN DE SUPABASE ---
-const SUPABASE_URL = "https://zhzvztpfwtalxgdqxdmf.supabase.co/rest/v1/";
+// ==========================================
+// CONFIGURACIÓN DE SUPABASE
+// ==========================================
+const SUPABASE_URL = "https://zhzvztpfwtalxgdqxdmf.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpoenZ6dHBmd3RhbHhnZHF4ZG1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMTUxMjcsImV4cCI6MjEwNjg5MTEyN30.TOEkXRsz5lnfFRG5vHPIujj0EQsVo9Vhre5Q0_UMORU"; 
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Almacena la capa que el usuario tiene seleccionada actualmente
+// Variables de estado global
 let capaSeleccionada = null;
-
-// Diccionario para almacenar las capas por ID y permitir el buscador
 const capasPorId = {};
 
-// --- INICIALIZACIÓN DEL MAPA ---
+// ==========================================
+// INICIALIZACIÓN DEL MAPA LEAFLET
+// ==========================================
 const map = L.map('map').setView([-26.3, -60.8], 7.5);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
 }).addTo(map);
 
-// --- FUNCIONES AUXILIARES DEL MAPA ---
+// Estilos dinámicos para los polígonos
 function obtenerColor(clasificacion) {
     switch (clasificacion) {
         case 'Apto para reforestar y legal': return '#22c55e';
@@ -41,17 +43,14 @@ function resaltarPoligono(layer) {
         capaSeleccionada.setStyle(estiloFeature(capaSeleccionada.feature));
     }
 
-    // Guardar la nueva capa seleccionada
     capaSeleccionada = layer;
 
-    // Aplicar estilo destacado (borde negro grueso y opacidad alta)
     layer.setStyle({
-        color: '#161d2d',     // Borde oscuro/negro muy visible
-        weight: 3,            // Borde grueso
-        fillOpacity: 0.95     // Mayor opacidad
+        color: '#161d2d',    // Borde negro/oscuro destacado
+        weight: 3.5,         // Borde grueso
+        fillOpacity: 0.95
     });
 
-    // Traer la capa al frente para que el borde no quede tapado por parcelas vecinas
     layer.bringToFront();
 }
 
@@ -143,7 +142,6 @@ function seleccionarPoligono(feature, layer) {
 }
 
 function onEachFeature(feature, layer) {
-    // Guardar referencia en el diccionario para el buscador
     if (feature.properties && feature.properties.id) {
         capasPorId[feature.properties.id] = layer;
     }
@@ -155,7 +153,6 @@ function onEachFeature(feature, layer) {
             }
         },
         mouseout: function(e) {
-            // Solo limpia el estilo si NO es el polígono seleccionado
             if (layer !== capaSeleccionada) {
                 layer.setStyle(estiloFeature(feature));
             }
@@ -166,7 +163,9 @@ function onEachFeature(feature, layer) {
     });
 }
 
-// --- CARGA DE DATOS DE RENDER ---
+// ==========================================
+// CARGA DE DATOS DESDE FASTAPI (RENDER)
+// ==========================================
 fetch('https://backend-sdss.onrender.com/api/aptitud-suelos')
     .then(response => {
         if (!response.ok) throw new Error("Error en la respuesta de la red");
@@ -183,7 +182,9 @@ fetch('https://backend-sdss.onrender.com/api/aptitud-suelos')
         document.getElementById('detalle-suelo').innerHTML = `<p style="color:red; font-size: 12px;">Error de conexión con la API FastAPI.</p>`;
     });
 
-// --- LÓGICA DEL BUSCADOR DE POLÍGONOS ---
+// ==========================================
+// LÓGICA DEL BUSCADOR DE POLÍGONOS
+// ==========================================
 const inputSearch = document.getElementById('search-polygon-id');
 const btnSearch = document.getElementById('btn-search');
 
@@ -200,58 +201,131 @@ function ejecutarBusqueda() {
     }
 }
 
-btnSearch.addEventListener('click', ejecutarBusqueda);
-inputSearch.addEventListener('keypress', (e) => { if (e.key === 'Enter') ejecutarBusqueda(); });
+if (btnSearch) btnSearch.addEventListener('click', ejecutarBusqueda);
+if (inputSearch) inputSearch.addEventListener('keypress', (e) => { if (e.key === 'Enter') ejecutarBusqueda(); });
 
-// --- LÓGICA DE AUTENTICACIÓN (SUPABASE) ---
-const btnLoginTrigger = document.getElementById("btn-login-trigger");
-const btnLogout = document.getElementById("btn-logout");
-const loginModal = document.getElementById("login-modal");
-const closeModal = document.getElementById("close-modal");
-const loginForm = document.getElementById("login-form");
-const userBadge = document.getElementById("user-badge");
-const loginError = document.getElementById("login-error");
-
-btnLoginTrigger.addEventListener("click", () => loginModal.classList.remove("hidden"));
-closeModal.addEventListener("click", () => loginModal.classList.add("hidden"));
-
-loginForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    loginError.classList.add("hidden");
-
-    const email = document.getElementById("login-email").value;
-    const password = document.getElementById("login-password").value;
-
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-
-    if (error) {
-        loginError.textContent = "Credenciales incorrectas: " + error.message;
-        loginError.classList.remove("hidden");
-    } else {
-        loginModal.classList.add("hidden");
-        actualizarInterfazUsuario(data.user);
-    }
-});
-
-btnLogout.addEventListener("click", async () => {
-    await supabaseClient.auth.signOut();
-    actualizarInterfazUsuario(null);
-});
-
-function actualizarInterfazUsuario(user) {
-    if (user) {
-        userBadge.textContent = "Modo: Administrador";
-        userBadge.className = "badge admin";
-        btnLoginTrigger.classList.add("hidden");
-        btnLogout.classList.remove("hidden");
-    } else {
-        userBadge.textContent = "Modo: Visitante";
-        userBadge.className = "badge visitor";
-        btnLoginTrigger.classList.remove("hidden");
-        btnLogout.classList.add("hidden");
+// ==========================================
+// REGISTRO DE AUDITORÍA Y ACCESOS
+// ==========================================
+async function registrarAcceso(rol, email = 'anonimo') {
+    try {
+        await supabaseClient
+            .from('registros_acceso')
+            .insert([{ rol_usuario: rol, email: email }]);
+    } catch (err) {
+        console.log("Nota: Registro de visitas no activo en Supabase aún.");
     }
 }
 
+// ==========================================
+// AUTENTICACIÓN Y PORTAL DE ENTRADA
+// ==========================================
+const loginModal = document.getElementById("login-modal");
+const accessOptions = document.querySelector(".access-options");
+const loginForm = document.getElementById("login-form");
+const loginError = document.getElementById("login-error");
+const userBadge = document.getElementById("user-badge");
+
+const btnEnterVisitor = document.getElementById("btn-enter-visitor");
+const btnToggleAdmin = document.getElementById("btn-toggle-admin");
+const btnBackOptions = document.getElementById("btn-back-options");
+const btnLoginTrigger = document.getElementById("btn-login-trigger");
+const btnLogout = document.getElementById("btn-logout");
+
+// Entrar como Visitante
+if (btnEnterVisitor) {
+    btnEnterVisitor.addEventListener("click", () => {
+        if (loginModal) loginModal.classList.add("hidden");
+        actualizarInterfazUsuario(null);
+        registrarAcceso('visitante');
+    });
+}
+
+// Mostrar/Ocultar Formulario de Login Admin
+if (btnToggleAdmin) {
+    btnToggleAdmin.addEventListener("click", () => {
+        if (accessOptions) accessOptions.classList.add("hidden");
+        if (loginForm) loginForm.classList.remove("hidden");
+    });
+}
+
+if (btnBackOptions) {
+    btnBackOptions.addEventListener("click", () => {
+        if (loginForm) loginForm.classList.add("hidden");
+        if (accessOptions) accessOptions.classList.remove("hidden");
+    });
+}
+
+// Reabrir portal desde el botón superior
+if (btnLoginTrigger) {
+    btnLoginTrigger.addEventListener("click", () => {
+        if (loginModal) {
+            loginModal.classList.remove("hidden");
+            if (loginForm) loginForm.classList.add("hidden");
+            if (accessOptions) accessOptions.classList.remove("hidden");
+        }
+    });
+}
+
+// Submit Formulario Login
+if (loginForm) {
+    loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (loginError) loginError.classList.add("hidden");
+
+        const email = document.getElementById("login-email").value.trim();
+        const password = document.getElementById("login-password").value.trim();
+
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+        if (error) {
+            if (loginError) {
+                loginError.textContent = "Error de acceso: " + error.message;
+                loginError.classList.remove("hidden");
+            }
+        } else {
+            if (loginModal) loginModal.classList.add("hidden");
+            actualizarInterfazUsuario(data.user);
+            registrarAcceso('admin', email);
+        }
+    });
+}
+
+// Cerrar Sesión
+if (btnLogout) {
+    btnLogout.addEventListener("click", async () => {
+        await supabaseClient.auth.signOut();
+        actualizarInterfazUsuario(null);
+    });
+}
+
+// Actualizar Roles en Interfaz
+function actualizarInterfazUsuario(user) {
+    if (user) {
+        const userRole = user.user_metadata?.role || (user.email.includes('admin') ? 'admin' : 'visitor');
+        
+        if (userRole === 'admin') {
+            userBadge.textContent = "Modo: Administrador";
+            userBadge.className = "badge admin";
+        } else {
+            userBadge.textContent = "Modo: Visitante";
+            userBadge.className = "badge visitor";
+        }
+
+        if (btnLoginTrigger) btnLoginTrigger.classList.add("hidden");
+        if (btnLogout) btnLogout.classList.remove("hidden");
+    } else {
+        userBadge.textContent = "Modo: Visitante";
+        userBadge.className = "badge visitor";
+        if (btnLoginTrigger) btnLoginTrigger.classList.remove("hidden");
+        if (btnLogout) btnLogout.classList.add("hidden");
+    }
+}
+
+// Verificar sesión existente al cargar la página
 supabaseClient.auth.getSession().then(({ data: { session } }) => {
-    if (session) actualizarInterfazUsuario(session.user);
+    if (session) {
+        if (loginModal) loginModal.classList.add("hidden");
+        actualizarInterfazUsuario(session.user);
+    }
 });
