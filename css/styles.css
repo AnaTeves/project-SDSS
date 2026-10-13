@@ -262,3 +262,31 @@ body { margin: 0; padding: 0; background: #f4f6f8; }
 
 .hidden { display: none !important; }
 .error-msg { color: #dc2626; font-size: 0.85rem; margin-top: 10px; text-align: center; }
+
+.btn-reporte-pdf {
+    width: 100%;
+    margin-top: 12px;
+    padding: 10px 14px;
+    background-color: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.btn-reporte-pdf:hover {
+    background-color: #1d4ed8;
+    transform: translateY(-1px);
+}
+
+.btn-reporte-pdf:active {
+    transform: translateY(0);
+}

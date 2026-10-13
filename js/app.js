@@ -174,6 +174,10 @@ function seleccionarPoligono(feature, layer) {
             <span style="font-size: 11px; text-transform: uppercase; color: #475569; font-weight: 700;">Puntaje final</span>
             <div style="font-size: 22px; font-weight: 700; color: #0f172a;">${props.aptitud_final.toFixed(2)}</div>
         </div>
+
+        <button class="btn-reporte-pdf" onclick="descargarReportePDF(${props.id})">
+            📄 Generar reporte técnico (PDF)
+        </button>
     `;
 }
 
@@ -365,3 +369,16 @@ supabaseClient.auth.getSession().then(({ data: { session } }) => {
         actualizarInterfazUsuario(session.user);
     }
 });
+
+
+// INTEGRACION DE REPORTES PDF CON GRAFANA
+function descargarReportePDF(poligonoId) {
+    const DASHBOARD_UID = "lufz7hf"; 
+    const grafanaBaseUrl = "https://tanebony15.grafana.net/d/${DASHBOARD_UID}/reporte-de-poligono";
+    
+    // Inyección del ID + Modo Kiosco + Tema Claro
+    const urlReporte = `${grafanaBaseUrl}?var-poligono_id=${poligonoId}&kiosk&theme=light`;
+    
+    // Abre el reporte dinámico en una nueva pestaña
+    window.open(urlReporte, '_blank');
+}
