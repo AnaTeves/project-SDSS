@@ -373,8 +373,7 @@ supabaseClient.auth.getSession().then(({ data: { session } }) => {
 
 // INTEGRACION DE REPORTES PDF CON GRAFANA
 function descargarReportePDF(poligonoId) {
-    const DASHBOARD_UID = "lufz7hf"; 
-    const grafanaBaseUrl = "https://tanebony15.grafana.net/d/${DASHBOARD_UID}/reporte-de-poligono";
+    const grafanaBaseUrl = "https://tanebony15.grafana.net/d/lufz7hf/reporte-de-poligono";
     
     // Inyección del ID + Modo Kiosco + Tema Claro
     const urlReporte = `${grafanaBaseUrl}?var-poligono_id=${poligonoId}&kiosk&theme=light`;
