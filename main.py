@@ -10,6 +10,11 @@ from src.db_connector import DBConnector
 from src.gee_connector import GEEConnector
 from src.reforestacion_pipeline import ReforestationPipeline
 import time
+import io
+import asyncio
+import httpx
+from fastapi import FastAPI, Response, HTTPException
+from fpdf import FPDF
 
 """
 Script ejecutor central del proyecto.

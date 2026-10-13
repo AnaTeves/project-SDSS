@@ -370,14 +370,22 @@ supabaseClient.auth.getSession().then(({ data: { session } }) => {
     }
 });
 
-
-// INTEGRACION DE REPORTES PDF CON GRAFANA
+// ==========================================
+// FUNCIÓN PARA DESCARGAR EL REPORTE PDF
+// ==========================================
 function descargarReportePDF(poligonoId) {
-    const grafanaBaseUrl = "https://tanebony15.grafana.net/d/lufz7hf/reporte-de-poligono";
+    if (!poligonoId) {
+        alert("ID de polígono inválido.");
+        return;
+    }
     
-    // Inyección del ID + Modo Kiosco + Tema Claro
-    const urlReporte = `${grafanaBaseUrl}?var-poligono_id=${poligonoId}&kiosk&theme=light`;
+    const BACKEND_URL = "https://backend-sdss.onrender.com";
     
-    // Abre el reporte dinámico en una nueva pestaña
-    window.open(urlReporte, '_blank');
+    // Apuntamos al endpoint dinámico de FPDF2 que agregamos en server.py
+    const urlEndpoint = `${BACKEND_URL}/api/v1/poligonos/${poligonoId}/reporte-pdf`;
+    
+    // Redireccionamos el navegador a la URL del backend. 
+    // Al tener la cabecera Content-Disposition, el navegador no abandonará 
+    // la aplicación de Leaflet, simplemente iniciará la descarga en segundo plano.
+    window.location.href = urlEndpoint;
 }
