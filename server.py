@@ -62,6 +62,12 @@ def safe_float(valor):
     except (ValueError, TypeError):
         return 0.00
 
+def formatear_posgar(valor):
+    """Formatea números métricos con punto de miles y coma decimal (estándar español)."""
+    if valor is None:
+        return "N/A"
+    return f"{valor:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 # Función auxiliar asíncrona para descargar los paneles de Grafana
 async def descargar_panel_grafana(poligono_id: int, panel_id: int) -> bytes:
     if not GRAFANA_TOKEN:
@@ -88,10 +94,23 @@ en un único documento PDF optimizado en memoria RAM.
 async def descargar_reporte_pdf(poligono_id: int):
     query_meta = text("""
         SELECT 
-            id, superficie_ha, lat_centro, lon_centro, 
-            x_posgar, y_posgar, lat_min, lat_max, lon_min, lon_max 
-        FROM vista_metadatos_pdf 
-        WHERE id = :id;
+            m.id, 
+            m.sgrup_sue1 AS subgrupo, 
+            m.text_sups1 AS textura,
+            m.clasificacion_final,
+            m.aptitud_final,
+            v.superficie_ha, 
+            v.lat_centro, 
+            v.lon_centro, 
+            v.x_posgar, 
+            v.y_posgar, 
+            v.lat_min, 
+            v.lat_max, 
+            v.lon_min, 
+            v.lon_max 
+        FROM mapa_aptitud_final m
+        JOIN vista_metadatos_pdf v ON m.id = v.id
+        WHERE m.id = :id;
     """)
     
     try:
@@ -132,42 +151,79 @@ async def descargar_reporte_pdf(poligono_id: int):
     
     # Formatear valores
     sup_ha = safe_float(res_meta.superficie_ha)
+    subgrupo = res_meta.subgrupo if res_meta.subgrupo else "No especificado"
+    textura = res_meta.textura if res_meta.textura else "No especificada"
     lat_c = safe_float(res_meta.lat_centro)
     lon_c = safe_float(res_meta.lon_centro)
-    x_pos = f"{res_meta.x_posgar:,.1f}".replace(",", ".") if res_meta.x_posgar else "N/A"
-    y_pos = f"{res_meta.y_posgar:,.1f}".replace(",", ".") if res_meta.y_posgar else "N/A"
+    x_pos = formatear_posgar(res_meta.x_posgar)
+    y_pos = formatear_posgar(res_meta.y_posgar)
     bbox_str = f"N: {safe_float(res_meta.lat_max)}° | S: {safe_float(res_meta.lat_min)}° | E: {safe_float(res_meta.lon_max)}° | O: {safe_float(res_meta.lon_min)}°"
 
-    # Filas de texto de la tarjeta
-    pdf.set_xy(18, start_y + 3)
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(85, 5, f"Polígono ID: #{poligono_id}", new_x="RIGHT", new_y="TOP")
-    pdf.cell(85, 5, f"Superficie Total: {sup_ha} ha", new_x="LMARGIN", new_y="NEXT")
+    # Fila 1: ID y Superficie
+    pdf.set_xy(18, start_y + 2.5)
+    pdf.set_font("Helvetica", "B", 8.5)
+    pdf.cell(85, 4.5, f"Polígono ID: #{poligono_id}", new_x="RIGHT", new_y="TOP")
+    pdf.cell(85, 4.5, f"Superficie Total: {sup_ha} ha", new_x="LMARGIN", new_y="NEXT")
     
+    # Fila 2: Atributos del suelo
     pdf.set_x(18)
-    pdf.set_font("Helvetica", "", 8.5)
-    pdf.cell(85, 5, f"Centroide WGS84: {lat_c}° S, {lon_c}° O", new_x="RIGHT", new_y="TOP")
-    pdf.cell(85, 5, f"Sistema Oficial: POSGAR 98 / Arg 5 (EPSG:22175)", new_x="LMARGIN", new_y="NEXT")
-    
+    pdf.cell(85, 4.5, f"Subgrupo de Suelo: {subgrupo}", new_x="RIGHT", new_y="TOP")
+    pdf.cell(85, 4.5, f"Textura Superficial: {textura}", new_x="LMARGIN", new_y="NEXT")
+
+    # Fila 3: Coordenadas
     pdf.set_x(18)
-    pdf.cell(85, 5, f"POSGAR X (Este): {x_pos} m", new_x="RIGHT", new_y="TOP")
-    pdf.cell(85, 5, f"POSGAR Y (Norte): {y_pos} m", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 8)
+    pdf.cell(85, 4.5, f"Centroide WGS84: {lat_c}° S, {lon_c}° O", new_x="RIGHT", new_y="TOP")
+    pdf.cell(85, 4.5, f"Sistema Oficial: POSGAR 98 / Arg 5 (EPSG:22175)", new_x="LMARGIN", new_y="NEXT")
     
+    # Fila 4: POSGAR X / Y
+    pdf.set_x(18)
+    pdf.cell(85, 4.5, f"POSGAR X (Este): {x_pos} m", new_x="RIGHT", new_y="TOP")
+    pdf.cell(85, 4.5, f"POSGAR Y (Norte): {y_pos} m", new_x="LMARGIN", new_y="NEXT")
+    
+    # Fila 5: Bounding Box
     pdf.set_x(18)
     pdf.set_font("Helvetica", "I", 7.5)
-    pdf.cell(170, 5, f"Encuadre (Bounding Box WGS84): {bbox_str}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(170, 4.5, f"Encuadre (Bounding Box WGS84): {bbox_str}", new_x="LMARGIN", new_y="NEXT")
     
-    # Ajustar posición vertical para continuar el documento
-    pdf.set_y(start_y + 32)
+    pdf.set_y(start_y + 36)
 
-    # Texto introductorio del reporte
-    pdf.set_font("Helvetica", "", 10)
-    texto = (
-            f"Este reporte consolida los resultados de la evaluación de aptitud forestal y viabilidad legal "
-            f"para el predio seleccionado de {sup_ha} hectáreas en la provincia del Chaco."
-            )
-    pdf.multi_cell(0, 4, texto, new_x="LMARGIN", new_y="NEXT", align="J")
-    pdf.ln(3)
+    # --- RECUADRO DE DICTAMEN DE APTITUD (APTO / NO APTO) ---
+    clasificacion_raw = str(res_meta.clasificacion_final or "").strip().lower()
+    es_apto = "apto" in clasificacion_raw and "no" not in clasificacion_raw
+
+    banner_y = pdf.get_y()
+    if es_apto:
+        pdf.set_fill_color(235, 247, 238)  # Verde suave
+        pdf.set_draw_color(46, 125, 50)    # Verde bordes
+        pdf.set_text_color(27, 94, 32)     # Verde texto
+        titulo_dictamen = "DICTAMEN: POLÍGONO HABILITADO / APTO PARA REFORESTACIÓN"
+        desc_dictamen = (
+            "El predio analizado cumple satisfactoriamente con la aptitud edafoclimática requerida, "
+            "la normativa legal de la OTBN (Ley 26.331) y la compatibilidad de uso del suelo."
+        )
+    else:
+        pdf.set_fill_color(253, 237, 237)  # Rojo suave
+        pdf.set_draw_color(198, 40, 40)    # Rojo bordes
+        pdf.set_text_color(183, 28, 28)    # Rojo texto
+        titulo_dictamen = "DICTAMEN: POLÍGONO NO APTO / RESTRINGIDO"
+        desc_dictamen = (
+            "El predio presenta restricciones ambientales o legales (descalificación por OTBN o "
+            "cobertura de suelo incompatible) que impiden la práctica de reforestación de Quebracho Colorado."
+        )
+
+    pdf.rect(15, banner_y, 180, 16, style="DF")
+    pdf.set_xy(18, banner_y + 2)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(174, 4, titulo_dictamen, new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_x(18)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.multi_cell(174, 3.5, desc_dictamen, new_x="LMARGIN", new_y="NEXT")
+    
+    # Restablecer color de texto a negro por defecto
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_y(banner_y + 19)
 
     # PRIMER IMAGEN: Panel de Aptitud Edafoclimática y Vigor Vegetal
     pdf.set_font("Helvetica", "B", 11)
@@ -185,8 +241,9 @@ async def descargar_reporte_pdf(poligono_id: int):
     pdf.multi_cell(0, 4, texto, new_x="LMARGIN", new_y="NEXT", align="J") 
     pdf.ln(2)
     pdf.image(io.BytesIO(foto_panel_1), x=15, w=180)
-    pdf.ln(2)
 
+    # --- PÁGINA 2 ---
+    pdf.add_page()
     # SEGUNDA IMAGEN: Criterios de viabilidad: Biofísica, Legalidad (OTBN) y Cobertura
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 10, "2. Criterios de viabilidad: Biofísica, Legalidad (OTBN) y Cobertura", new_x="LMARGIN", new_y="NEXT")
@@ -204,9 +261,8 @@ async def descargar_reporte_pdf(poligono_id: int):
     pdf.multi_cell(0, 4, texto, new_x="LMARGIN", new_y="NEXT", align="J") 
     pdf.ln(2)
     pdf.image(io.BytesIO(foto_panel_3), x=15, w=180)
+    pdf.ln(4)
 
-    # --- PÁGINA 2 ---
-    pdf.add_page()
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 10, "3. Trazabilidad del Análisis Espacial", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
