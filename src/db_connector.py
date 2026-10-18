@@ -24,6 +24,19 @@ class DBConnector:
     def cargar_capa_postgis(self, query, geom_col='geom'):
         return gpd.read_postgis(query, con=self.engine, geom_col=geom_col)
 
+    def obtener_metadatos_pdf(self, poligono_id):
+        """
+        Consulta la vista vista_metadatos_pdf para un polígono específico
+        y devuelve un diccionario listo para usar en el generador de PDF.
+        """
+        query = f"SELECT * FROM vista_metadatos_pdf WHERE id = {int(poligono_id)};"
+        df = pd.read_sql(query, con=self.engine)
+        
+        if not df.empty:
+            return df.iloc[0].to_dict()
+        else:
+            raise ValueError(f"No se encontraron metadatos para el polígono ID: {poligono_id}")
+
     # Exporta y guarda GeoDataFrames procesados de vuelta a PostGIS.
     def guardar_resultado(self, gdf, nombre_tabla):
         gdf.to_postgis(nombre_tabla, con=self.engine, if_exists='replace', index=False)
