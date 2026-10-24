@@ -8,6 +8,9 @@
 
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Turf JS - Libreria de analisis espacial para navegadores -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
     
     <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -69,11 +72,26 @@
 
     <!-- Barra Superior Flotante -->
     <header class="top-bar">
-        <div class="top-bar-left">
-            <h1 class="brand-title">Búsqueda por polígono</h1>
-            <div class="search-box">
-                <input type="number" id="search-polygon-id" placeholder="Buscar ID (ej. 59)..." />
-                <button id="btn-search">🔍</button>
+        <div class="top-bar-left" style="display: flex; gap: 20px; align-items: center;">
+        <!-- Buscador por Polígono -->
+            <div class="search-group" style="display: flex; align-items: center; gap: 8px;">
+                <h1 class="brand-title" style="margin: 0; font-size: 15px;">Polígono:</h1>
+                <div class="search-box">
+                    <input type="number" id="search-polygon-id" placeholder="ID (ej. 59)" style="width: 100px;" />
+                    <button id="btn-search">🔍</button>
+                </div>
+            </div>
+
+            <!-- Separador visual -->
+            <div style="border-left: 2px solid #e2e8f0; height: 28px;"></div>
+
+            <!-- Buscador por Coordenadas -->
+            <div class="search-group" style="display: flex; align-items: center; gap: 8px;">
+                <h1 class="brand-title" style="margin: 0; font-size: 15px;">Coordenadas:</h1>
+                <div class="search-box">
+                    <input type="text" id="search-coords" placeholder="-26.8, -60.5" style="width: 140px;" />
+                    <button id="btn-search-coords">🔍</button>
+                </div>
             </div>
         </div>
 

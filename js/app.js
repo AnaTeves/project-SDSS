@@ -46,7 +46,11 @@ async function registrarConsultaPoligono(idPoligono) {
 // ==========================================
 // INICIALIZACIÓN DEL MAPA LEAFLET
 // ==========================================
-const map = L.map('map').setView([-26.3, -60.8], 7.5);
+const map = L.map('map', {
+    zoomControl: false
+}).setView([-26.3, -60.8], 7.5);
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
@@ -206,13 +210,16 @@ function onEachFeature(feature, layer) {
 // ==========================================
 // CARGA DE DATOS DESDE FASTAPI (RENDER)
 // ==========================================
+let geojsonLayer; // Declaramos la variable global para usarla en el buscador
+
 fetch('https://backend-sdss.onrender.com/api/aptitud-suelos')
     .then(response => {
         if (!response.ok) throw new Error("Error en la respuesta de la red");
         return response.json();
     })
     .then(geoJsonData => {
-        L.geoJSON(geoJsonData, {
+        // Guardamos la capa generada en la variable global
+        geojsonLayer = L.geoJSON(geoJsonData, {
             style: estiloFeature,
             onEachFeature: onEachFeature
         }).addTo(map);
@@ -243,6 +250,55 @@ function ejecutarBusqueda() {
 
 if (btnSearch) btnSearch.addEventListener('click', ejecutarBusqueda);
 if (inputSearch) inputSearch.addEventListener('keypress', (e) => { if (e.key === 'Enter') ejecutarBusqueda(); });
+
+// ==========================================
+// LÓGICA DEL BUSCADOR POR COORDENADAS
+// ==========================================
+const inputCoords = document.getElementById('search-coords');
+const btnSearchCoords = document.getElementById('btn-search-coords');
+
+function ejecutarBusquedaCoordenadas() {
+    if (!geojsonLayer) return alert('El mapa aún está cargando los datos. Intenta en unos segundos.');
+    
+    const inputVal = inputCoords.value.trim();
+    if (!inputVal) return;
+
+    // Separar latitud y longitud
+    const partes = inputVal.split(',');
+    if (partes.length !== 2) return alert('Formato incorrecto. Usa: Latitud, Longitud (ej: -26.8, -60.5)');
+
+    const lat = parseFloat(partes[0].trim());
+    const lng = parseFloat(partes[1].trim());
+
+    if (isNaN(lat) || isNaN(lng)) return alert('Coordenadas inválidas. Solo se aceptan números.');
+
+    // Turf.js requiere el orden [Longitud, Latitud] para el análisis
+    const punto = turf.point([lng, lat]);
+    let encontrado = false;
+
+    // Recorremos la capa que guardamos previamente
+    geojsonLayer.eachLayer((layer) => {
+        if (encontrado) return; // Cortar el ciclo si ya lo encontró
+
+        // Turf verifica si el punto matemático cae dentro del polígono
+        if (turf.booleanPointInPolygon(punto, layer.feature)) {
+            encontrado = true;
+            
+            // Movemos la cámara del mapa hacia el polígono
+            map.flyToBounds(layer.getBounds(), { maxZoom: 11, duration: 1.2 });
+            
+            // Reutilizamos tu función existente para resaltar y abrir el panel
+            seleccionarPoligono(layer.feature, layer);
+        }
+    });
+
+    if (!encontrado) {
+        alert('Las coordenadas ingresadas no caen dentro de la zona de estudio del Chaco.');
+    }
+}
+
+if (btnSearchCoords) btnSearchCoords.addEventListener('click', ejecutarBusquedaCoordenadas);
+if (inputCoords) inputCoords.addEventListener('keypress', (e) => { if (e.key === 'Enter') ejecutarBusquedaCoordenadas(); });
 
 // ==========================================
 // REGISTRO DE AUDITORÍA Y ACCESOS
