@@ -55,6 +55,8 @@ class ReforestationPipeline:
             (df_resultado['aptitud_ndvi'] * pesos['ndvi'])
         ).clip(0.0, 1.0)
 
+        df_resultado.loc[df_resultado['aptitud_suelo'] <= 0.40, 'aptitud_biofisica'] = 0.0
+
         # Evaluación Vectorial de Restricciones Críticas (MapBiomas y OTBN)
         print("[3/4] Evaluando restricciones de uso de suelo y gobernanza legal (OTBN)")
         
@@ -71,7 +73,7 @@ class ReforestationPipeline:
 
         # Umbral científico de aptitud biofísica y viabilidad del sustrato edáfico
         UMBRAL_APTITUD = 0.60
-        es_apto_biofisico = (df_resultado['aptitud_biofisica'] >= UMBRAL_APTITUD) & (df_resultado['aptitud_suelo'] > 0.10)
+        es_apto_biofisico = (df_resultado['aptitud_biofisica'] >= UMBRAL_APTITUD) & (df_resultado['aptitud_suelo'] >= 0.40)
 
         # Clasificación Estricta en las 3 Categorías
         print("[4/4] Clasificando polígonos bajo criterios edafoclimáticos y legales...")

@@ -3,6 +3,7 @@ import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
 from sqlalchemy import create_engine
 from src.db_connector import DBConnector
 
@@ -14,15 +15,14 @@ plt.rcParams['font.family'] = 'sans-serif'
 def ejecutar_validacion_censo(tabla_censo='quebracho_final'):
     """
     Realiza el análisis cuantitativo de solapamiento entre los puntos del censo
-    y la capa de aptitud territorial calculada por el DSS.
+    y la capa de aptitud territorial calculada por el DSS (Solo variables biofísicas).
     """
     db = DBConnector()
     engine = db.engine
     
-    # 1. Cargar el mapa de aptitud final
+    # 1. Cargar el mapa de aptitud final (Agregamos aptitud_suelo para el Kill-Switch)
     query_mapa = """
-        SELECT id, aptitud_biofisica, mascara_otbn, prop_otbn, 
-            clasificacion_final, aptitud_final, geom 
+        SELECT id, aptitud_biofisica, aptitud_suelo, geom 
         FROM mapa_aptitud_final;
     """
     mapa_gdf = db.cargar_capa_postgis(query_mapa, geom_col='geom')
@@ -55,26 +55,43 @@ def ejecutar_validacion_censo(tabla_censo='quebracho_final'):
         return
 
     # ==========================================
-    # METRICA A: MATRIZ DE COINCIDENCIA / CONTAGIO
+    # CLASIFICACIÓN BIOFÍSICA PURA (ESTÁNDAR FAO)
     # ==========================================
-    print("\n--- MATRIZ DE COINCIDENCIA POR CLASIFICACIÓN FINAL ---")
-    conteo_clasificacion = cruce_gdf['clasificacion_final'].value_counts()
+    condiciones_fao = [
+        (cruce_gdf['aptitud_suelo'] <= 0.40) | (cruce_gdf['aptitud_biofisica'] < 0.40), # Restricción letal
+        (cruce_gdf['aptitud_biofisica'] >= 0.40) & (cruce_gdf['aptitud_biofisica'] < 0.60),
+        (cruce_gdf['aptitud_biofisica'] >= 0.60) & (cruce_gdf['aptitud_biofisica'] < 0.80),
+        (cruce_gdf['aptitud_biofisica'] >= 0.80)
+    ]
+    
+    categorias_fao = [
+        'No Apto (N)',
+        'Marginalmente Apto (S3)',
+        'Moderadamente Apto (S2)',
+        'Óptimo (S1)'
+    ]
+    
+    cruce_gdf['clase_fao'] = np.select(condiciones_fao, categorias_fao, default='No Apto (N)')
+
+    print("\n--- DISTRIBUCIÓN BIOFÍSICA (FAO) ---")
+    conteo_clasificacion = cruce_gdf['clase_fao'].value_counts().reindex(categorias_fao[::-1]).fillna(0)
     porcentaje_clasificacion = (conteo_clasificacion / total_puntos_validados) * 100
 
     df_resumen = pd.DataFrame({
-        'Cantidad_Puntos': conteo_clasificacion,
+        'Cantidad_Puntos': conteo_clasificacion.astype(int),
         'Porcentaje (%)': porcentaje_clasificacion.round(2)
     })
     print(df_resumen)
 
     # ==========================================
-    # METRICA B: TASA DE ACIERTO BIOFÍSICO (> 0.65)
+    # TASA DE ACIERTO BIOFÍSICO (S1 + S2)
     # ==========================================
-    puntos_aptos_biofisico = cruce_gdf[cruce_gdf['aptitud_biofisica'] >= 0.65]
+    # Consideramos acierto a las categorías S1 y S2 (aptitud >= 0.60 y suelo > 0.40)
+    puntos_aptos_biofisico = cruce_gdf[cruce_gdf['clase_fao'].isin(['Óptimo (S1)', 'Moderadamente Apto (S2)'])]
     tasa_acierto_biofisico = (len(puntos_aptos_biofisico) / total_puntos_validados) * 100
 
     print("\n--- TASA DE ACIERTO BIOFÍSICO ---")
-    print(f"Puntos con Aptitud Biofísica >= 0.65: {len(puntos_aptos_biofisico)} / {total_puntos_validados}")
+    print(f"Puntos en categorías S1 y S2: {len(puntos_aptos_biofisico)} / {total_puntos_validados}")
     print(f"Tasa de Validación Biofísica: {tasa_acierto_biofisico:.2f}%")
 
     # ==========================================
@@ -83,9 +100,10 @@ def ejecutar_validacion_censo(tabla_censo='quebracho_final'):
     fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
     
     colores = {
-        'Apto para reforestar y legal': '#22c55e',
-        'Apto pero ilegal': '#f59e0b',
-        'No apto': '#ef4444'
+        'Óptimo (S1)': '#16a34a',             # Verde fuerte
+        'Moderadamente Apto (S2)': '#84cc16', # Verde claro/lima
+        'Marginalmente Apto (S3)': '#eab308', # Amarillo
+        'No Apto (N)': '#ef4444'              # Rojo
     }
     
     # Asignar paleta basada en las categorías presentes
@@ -110,9 +128,9 @@ def ejecutar_validacion_censo(tabla_censo='quebracho_final'):
             fontsize=10, fontweight='bold'
         )
 
-    ax.set_title('Distribución de Puntos Censados de Schinopsis balansae según el DSS', fontsize=12, fontweight='bold', pad=15)
+    ax.set_title('Distribución de Puntos Censados según Aptitud Biofísica (Clases FAO)', fontsize=12, fontweight='bold', pad=15)
     ax.set_ylabel('Porcentaje de Puntos Censados (%)', fontsize=10)
-    ax.set_xlabel('Clasificación Asignada por el Modelo', fontsize=10)
+    ax.set_xlabel('Clasificación Biofísica (FAO)', fontsize=10)
     ax.set_ylim(0, max(df_resumen['Porcentaje (%)']) * 1.15)
     plt.xticks(rotation=15, ha='right')
     plt.tight_layout()

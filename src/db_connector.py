@@ -2,6 +2,7 @@ import os
 from sqlalchemy import create_engine
 import geopandas as gpd
 from dotenv import load_dotenv
+from sqlalchemy import text, inspect
 
 # Le indicamos a Python que lea el archivo .env oculto
 load_dotenv()
@@ -38,6 +39,17 @@ class DBConnector:
             raise ValueError(f"No se encontraron metadatos para el polígono ID: {poligono_id}")
 
     # Exporta y guarda GeoDataFrames procesados de vuelta a PostGIS.
-    def guardar_resultado(self, gdf, nombre_tabla):
-        gdf.to_postgis(nombre_tabla, con=self.engine, if_exists='replace', index=False)
-        print(f"Capa '{nombre_tabla}' exportada exitosamente a PostGIS.")
+    def guardar_resultado(self, gdf, nombre_tabla='mapa_aptitud_final'):
+        inspector = inspect(self.engine)
+        
+        # Si la tabla ya existe, la vaciamos sin destruir su estructura
+        if inspector.has_table(nombre_tabla):
+            with self.engine.begin() as conn:
+                conn.execute(text(f"DELETE FROM {nombre_tabla};"))
+            modo_guardado = 'append'
+        else:
+            modo_guardado = 'replace'
+            
+        # Insertar los nuevos datos procesados
+        gdf.to_postgis(nombre_tabla, con=self.engine, if_exists=modo_guardado, index=False)
+        print(f"Datos guardados exitosamente en la tabla '{nombre_tabla}'.")

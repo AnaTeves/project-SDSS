@@ -444,4 +444,4 @@ function descargarReportePDF(poligonoId) {
     // Al tener la cabecera Content-Disposition, el navegador no abandonará 
     // la aplicación de Leaflet, simplemente iniciará la descarga en segundo plano.
     window.location.href = urlEndpoint;
-}
+} 
