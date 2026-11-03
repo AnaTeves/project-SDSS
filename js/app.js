@@ -402,17 +402,18 @@ function actualizarInterfazUsuario(user) {
         adminControls = document.createElement("div");
         adminControls.id = "admin-controls";
         adminControls.className = "hidden"; // Oculto por defecto
+        adminControls.style.cssText = "display: inline-flex; align-items: center; gap: 8px; margin-right: 12px;";
         adminControls.innerHTML = `
-            <button id="btn-dashboard" class="btn-admin" style="background-color:#1e293b; color:white; border:none; padding:8px 12px; margin-right:10px; border-radius:5px; cursor:pointer;">
-                📊 Dashboard (Métricas)
+            <button id="btn-dashboard" style="background:#1e293b; color:#fff; border:none; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; height:34px;">
+                📊 Panel
             </button>
-            <button id="btn-run-pipeline" class="btn-admin" style="background-color:#3b82f6; color:white; border:none; padding:8px 12px; margin-right:10px; border-radius:5px; cursor:pointer;">
-                🔄 Reprocesar MCDA (ETL)
+            <button id="btn-run-pipeline" style="background:#2563eb; color:#fff; border:none; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; height:34px;">
+                🔄 Reprocesar modelo
             </button>
         `;
 
-        if (userBadge && userBadge.parentNode) {
-            userBadge.parentNode.insertBefore(adminControls, userBadge.nextSibling);
+        if (btnLogout && btnLogout.parentNode) {
+            btnLogout.parentNode.insertBefore(adminControls, btnLogout);
         }
 
         // Listeners para los botones de administrador
@@ -421,13 +422,13 @@ function actualizarInterfazUsuario(user) {
     }
 
     if (user) {
-        // La única validación válida: leer la propiedad role del JWT de Supabase
         const userRole = user.user_metadata?.role || 'visitante';
 
         if (userRole === 'admin') {
             userBadge.textContent = "Modo: Administrador";
             userBadge.className = "badge admin";
             adminControls.classList.remove("hidden");
+            adminControls.style.display = "inline-flex";
         } else {
             userBadge.textContent = "Modo: Visitante";
             userBadge.className = "badge visitor";
@@ -437,12 +438,12 @@ function actualizarInterfazUsuario(user) {
         if (btnLoginTrigger) btnLoginTrigger.classList.add("hidden");
         if (btnLogout) btnLogout.classList.remove("hidden");
     } else {
-        // Estado sin autenticar
-        userBadge.textContent = "Modo: Visitante";
-        userBadge.className = "badge visitor";
         if (btnLoginTrigger) btnLoginTrigger.classList.remove("hidden");
         if (btnLogout) btnLogout.classList.add("hidden");
-        adminControls.classList.add("hidden");
+        if (adminControls) {
+            adminControls.classList.add("hidden");
+            adminControls.style.display = "none";
+        }
     }
 }
 
