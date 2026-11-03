@@ -395,17 +395,42 @@ if (btnLogout) {
     });
 }
 
-// Actualizar Roles en Interfaz
+// Actualizar Roles en Interfaz y habilitar vistas exclusivas
 function actualizarInterfazUsuario(user) {
+    // Buscar o crear contenedor para controles de administrador
+    let adminControls = document.getElementById("admin-controls");
+    if (!adminControls) {
+        adminControls = document.createElement("div");
+        adminControls.id = "admin-controls";
+        adminControls.className = "hidden"; // Oculto por defecto
+        adminControls.innerHTML = `
+            <button id="btn-dashboard" class="btn-admin" style="background-color:#1e293b; color:white; border:none; padding:8px 12px; margin-right:10px; border-radius:5px; cursor:pointer;">
+                📊 Dashboard (Métricas)
+            </button>
+            <button id="btn-run-pipeline" class="btn-admin" style="background-color:#3b82f6; color:white; border:none; padding:8px 12px; margin-right:10px; border-radius:5px; cursor:pointer;">
+                🔄 Reprocesar MCDA (ETL)
+            </button>
+        `;
+        // Insertarlo al lado del badge de usuario (Asegúrate de que el contenedor padre exista en tu HTML)
+        const header = document.querySelector(".header-controls") || document.body;
+        header.insertBefore(adminControls, userBadge.nextSibling);
+
+        // Listeners para los botones de administrador
+        document.getElementById("btn-dashboard").addEventListener("click", abrirPanelAuditoria);
+        document.getElementById("btn-run-pipeline").addEventListener("click", ejecutarPipelineRemoto);
+    }
+
     if (user) {
         const userRole = user.user_metadata?.role || (user.email.includes('admin') ? 'admin' : 'visitor');
         
         if (userRole === 'admin') {
             userBadge.textContent = "Modo: Administrador";
             userBadge.className = "badge admin";
+            adminControls.classList.remove("hidden"); // Mostrar controles
         } else {
             userBadge.textContent = "Modo: Visitante";
             userBadge.className = "badge visitor";
+            adminControls.classList.add("hidden"); // Ocultar controles
         }
 
         if (btnLoginTrigger) btnLoginTrigger.classList.add("hidden");
@@ -415,6 +440,7 @@ function actualizarInterfazUsuario(user) {
         userBadge.className = "badge visitor";
         if (btnLoginTrigger) btnLoginTrigger.classList.remove("hidden");
         if (btnLogout) btnLogout.classList.add("hidden");
+        adminControls.classList.add("hidden"); // Ocultar controles al desloguear
     }
 }
 
@@ -445,3 +471,121 @@ function descargarReportePDF(poligonoId) {
     // la aplicación de Leaflet, simplemente iniciará la descarga en segundo plano.
     window.location.href = urlEndpoint;
 } 
+
+// ==========================================
+// FUNCIONES EXCLUSIVAS DEL ADMINISTRADOR
+// ==========================================
+
+async function abrirPanelAuditoria() {
+    let dashboardModal = document.getElementById("dashboard-modal");
+    
+    // Si no existe el modal en el HTML, lo creamos dinámicamente
+    if (!dashboardModal) {
+        dashboardModal = document.createElement("div");
+        dashboardModal.id = "dashboard-modal";
+        dashboardModal.style.cssText = "position:fixed; top:50px; left:50%; transform:translateX(-50%); background:white; padding:20px; border-radius:8px; box-shadow:0 4px 15px rgba(0,0,0,0.2); z-index:9999; width:80%; max-width:600px; max-height:80vh; overflow-y:auto;";
+        
+        dashboardModal.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #ccc; padding-bottom:10px; margin-bottom:15px;">
+                <h2 style="margin:0;">Panel de Auditoría y Métricas</h2>
+                <button id="btn-close-dashboard" style="background:red; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:3px;">Cerrar</button>
+            </div>
+            <div id="dashboard-content">Cargando métricas desde Supabase...</div>
+        `;
+        document.body.appendChild(dashboardModal);
+        
+        document.getElementById("btn-close-dashboard").addEventListener("click", () => {
+            dashboardModal.classList.add("hidden");
+        });
+    }
+    
+    dashboardModal.classList.remove("hidden");
+    const contentDiv = document.getElementById("dashboard-content");
+    contentDiv.innerHTML = "Cargando métricas desde Supabase...";
+
+    try {
+        // Consultar a Supabase para agrupar y contar polígonos consultados
+        // Requiere que la tabla 'registros_acceso' tenga datos y permisos de lectura para el admin
+        const { data, error } = await supabaseClient
+            .from('registros_acceso')
+            .select('poligono_consultado')
+            .not('poligono_consultado', 'is', null);
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            contentDiv.innerHTML = "<p>No hay consultas registradas aún.</p>";
+            return;
+        }
+
+        // Conteo de frecuencias (Mapa de Calor Lógico)
+        const conteo = {};
+        data.forEach(row => {
+            conteo[row.poligono_consultado] = (conteo[row.poligono_consultado] || 0) + 1;
+        });
+
+        // Ordenar de mayor a menor
+        const poligonosPopulares = Object.keys(conteo)
+            .map(id => ({ id: parseInt(id), visitas: conteo[id] }))
+            .sort((a, b) => b.visitas - a.visitas);
+
+        // Generar tabla HTML
+        let tablaHTML = `
+            <p>Se muestran los polígonos de suelo con mayor interés (búsquedas por visitantes o usuarios de campo).</p>
+            <table style="width:100%; border-collapse: collapse; margin-top:10px;">
+                <thead>
+                    <tr style="background:#f1f5f9; text-align:left;">
+                        <th style="padding:8px; border: 1px solid #cbd5e1;">ID Polígono</th>
+                        <th style="padding:8px; border: 1px solid #cbd5e1;">Total de Consultas</th>
+                        <th style="padding:8px; border: 1px solid #cbd5e1;">Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        poligonosPopulares.forEach(p => {
+            tablaHTML += `
+                <tr>
+                    <td style="padding:8px; border: 1px solid #cbd5e1;">#${p.id}</td>
+                    <td style="padding:8px; border: 1px solid #cbd5e1;">${p.visitas}</td>
+                    <td style="padding:8px; border: 1px solid #cbd5e1;">
+                        <button onclick="buscarDesdeDashboard(${p.id})" style="padding:4px 8px; cursor:pointer;">Ver en Mapa</button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tablaHTML += `</tbody></table>`;
+        contentDiv.innerHTML = tablaHTML;
+
+    } catch (err) {
+        console.error("Error cargando dashboard:", err);
+        contentDiv.innerHTML = `<p style="color:red;">Error al cargar datos: ${err.message}</p>`;
+    }
+}
+
+// Función auxiliar para que el administrador salte del dashboard al mapa
+window.buscarDesdeDashboard = function(idPoligono) {
+    const dashboardModal = document.getElementById("dashboard-modal");
+    if (dashboardModal) dashboardModal.classList.add("hidden"); // Cierra modal
+    
+    // Inyecta valor en el input de búsqueda existente y dispara el click
+    const inputSearch = document.getElementById('search-polygon-id');
+    const btnSearch = document.getElementById('btn-search');
+    
+    if (inputSearch && btnSearch) {
+        inputSearch.value = idPoligono;
+        btnSearch.click();
+    }
+}
+
+// Simulación de disparo del Pipeline ETL (Requiere endpoint seguro en FastAPI)
+async function ejecutarPipelineRemoto() {
+    const confirmacion = confirm("⚠️ ¿Estás seguro de que deseas re-ejecutar el modelo MCDA y actualizar PostGIS? Este proceso en lote (batch) tomará aproximadamente 1 minuto.");
+    
+    if (!confirmacion) return;
+
+    alert("Simulación: Pipeline ETL iniciado en el servidor (Ejecutando main.py...). Los resultados actualizarán la base de datos.");
+    // Aquí iría el fetch a tu backend protegido:
+    // fetch('https://backend-sdss.onrender.com/api/admin/run-etl', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+}
