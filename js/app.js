@@ -402,7 +402,7 @@ function actualizarInterfazUsuario(user) {
         adminControls = document.createElement("div");
         adminControls.id = "admin-controls";
         adminControls.className = "hidden"; // Oculto por defecto
-        adminControls.style.cssText = "display: inline-flex; align-items: center; gap: 8px; margin-right: 12px;";
+        adminControls.style.cssText = "display: none; align-items: center; gap: 8px; margin-right: 12px;";
         adminControls.innerHTML = `
             <button id="btn-dashboard" style="background:#1e293b; color:#fff; border:none; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; height:34px;">
                 📊 Panel
