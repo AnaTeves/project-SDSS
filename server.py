@@ -1,9 +1,11 @@
 import json
 import os
+import jwt
 import io
 import httpx
 import asyncio
-from fastapi import FastAPI, HTTPException, Response, BackgroundTasks 
+from fastapi import FastAPI, HTTPException, Response, BackgroundTasks, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
@@ -24,6 +26,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
+security = HTTPBearer()
+
 """
 Implementa FastAPI Middleware para habilitar el Intercambio de Recursos de Origen Cruzado (CORS) sin restricciones de puertos.
 """
@@ -39,6 +43,7 @@ app.add_middleware(
 DATABASE_URL = os.getenv("DATABASE_URL")
 GRAFANA_BASE_URL = os.getenv("GRAFANA_BASE_URL", "https://grafana.net")
 GRAFANA_TOKEN = os.getenv("GRAFANA_API_TOKEN")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
 if not DATABASE_URL:
     raise ValueError("ERROR: DATABASE_URL no está configurada en el archivo .env")
@@ -49,8 +54,30 @@ engine = create_engine(DATABASE_URL)
 # Cliente HTTP global y asíncrono exclusivo para Grafana
 http_client = httpx.AsyncClient(timeout=20.0)
 
-# Flag de control en memoria para evitar ejecuciones simultáneas del pipeline ETL
-etl_en_progreso = False
+etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
+
+def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Valida la firma del token JWT contra el secreto de Supabase."""
+    token = credentials.credentials
+    try:
+        # Decodifica y valida la firma automáticamente
+        payload = jwt.decode(
+            token, 
+            SUPABASE_JWT_SECRET, 
+            algorithms=["HS256"],
+            options={"verify_aud": False} 
+        )
+        
+        # Validamos que el token pertenezca a un usuario autenticado
+        if payload.get("role") != "authenticated":
+            raise HTTPException(status_code=403, detail="Rol no autorizado para esta acción")
+            
+        return payload
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="El token ha expirado. Vuelve a iniciar sesión.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Credenciales inválidas o token modificado.")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -107,24 +134,22 @@ Endpoint administrativo para disparar la actualización de datos (MCDA / ETL) po
 Evita problemas de timeout respondiendo de inmediato gracias a BackgroundTasks.
 """
 @app.post("/api/admin/run-etl")
-async def executar_pipeline_etl(background_tasks: BackgroundTasks):
+async def ejecutar_etl(background_tasks: BackgroundTasks, usuario_payload: dict = Depends(verificar_token_supabase)):
     global etl_en_progreso
     
-    # Si ya se está corriendo un proceso, rechazamos la nueva petición (Anti-doble-clic)
     if etl_en_progreso:
-        raise HTTPException(
-            status_code=429, 
-            detail="El pipeline ya se encuentra en ejecucion. Por favor, espere a que finalice antes de intentar nuevamente."
-        )
-    
-    # Bloqueamos el flag e iniciamos la tarea asíncrona fuera del hilo principal de la API
+        raise HTTPException(status_code=409, detail="El ETL ya está procesándose")
+        
     etl_en_progreso = True
+    
     background_tasks.add_task(correr_script_etl)
     
-    return {
-        "status": "success",
-        "message": "El procesamiento ETL fue iniciado en el servidor. La base de datos PostGIS será actualizada en breve."
-    }
+    return {"mensaje": "Pipeline ETL iniciado con éxito en segundo plano"}
+
+@app.get("/api/admin/etl-status")
+async def consultar_estado_etl():
+    global etl_en_progreso
+    return {"en_progreso": etl_en_progreso}
 
 """
 Endpoint encargado de compilar los 3 paneles analíticos de Grafana para un polígono específico 

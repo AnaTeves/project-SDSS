@@ -426,18 +426,26 @@ function actualizarInterfazUsuario(user) {
 
         if (userRole === 'admin') {
             userBadge.textContent = "Modo: Administrador";
-            userBadge.className = "badge admin";
+            userBadge.classList.add("admin");
+            userBadge.classList.remove("visitor");
             adminControls.classList.remove("hidden");
             adminControls.style.display = "inline-flex";
         } else {
             userBadge.textContent = "Modo: Visitante";
-            userBadge.className = "badge visitor";
+            userBadge.classList.add("visitor");
+            userBadge.classList.remove("admin");
+            adminControls.classList.add("hidden");
             adminControls.style.display = "none";
         }
 
         if (btnLoginTrigger) btnLoginTrigger.classList.add("hidden");
         if (btnLogout) btnLogout.classList.remove("hidden");
     } else {
+        // Estado explícito al cerrar sesión
+        userBadge.textContent = "Modo: Visitante";
+        userBadge.classList.add("visitor");
+        userBadge.classList.remove("admin");
+        
         if (btnLoginTrigger) btnLoginTrigger.classList.remove("hidden");
         if (btnLogout) btnLogout.classList.add("hidden");
         if (adminControls) {
@@ -447,10 +455,21 @@ function actualizarInterfazUsuario(user) {
     }
 }
 
-// Verificar sesión existente al cargar la página
+// Verificar sesión existente al cargar la página o recargar estados
 supabaseClient.auth.getSession().then(({ data: { session } }) => {
     if (session) {
         if (loginModal) loginModal.classList.add("hidden");
+        actualizarInterfazUsuario(session.user);
+    } else {
+        actualizarInterfazUsuario(null);
+    }
+});
+
+// Listener adicional para detectar cambios de estado de autenticación globales
+supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT') {
+        actualizarInterfazUsuario(null);
+    } else if (event === 'SIGNED_IN' && session) {
         actualizarInterfazUsuario(session.user);
     }
 });
@@ -582,13 +601,32 @@ window.buscarDesdeDashboard = function(idPoligono) {
     }
 }
 
-// Simulación de disparo del Pipeline ETL (Requiere endpoint seguro en FastAPI)
 async function ejecutarPipelineRemoto() {
-    const confirmacion = confirm("⚠️ ¿Estás seguro de que deseas re-ejecutar el modelo MCDA y actualizar PostGIS? Este proceso en lote (batch) tomará aproximadamente 1 minuto.");
+    const confirmacao = confirm("⚠️ ¿Esta seguro que desea reprocesar el modelo? El proceso recalculara los 429 poligonos y actualizara la base de datos. Esto puede demorar 1 minuto.");
     
-    if (!confirmacion) return;
+    if (!confirmacao) return;
 
-    alert("Simulación: Pipeline ETL iniciado en el servidor (Ejecutando main.py...). Los resultados actualizarán la base de datos.");
-    // Aquí iría el fetch a tu backend protegido:
-    // fetch('https://backend-sdss.onrender.com/api/admin/run-etl', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+    try {
+        document.getElementById("btn-run-pipeline").disabled = true;
+        const response = await fetch('https://backend-sdss.onrender.com/api/admin/run-etl', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert("✅ " + data.message);
+        } else {
+            // Maneja el error 429 (ya en ejecución) u otros errores del servidor
+            alert("❌ Error en el servidor: " + (data.detail || "No fue posible iniciar el pipeline."));
+        }
+    } catch (err) {
+        console.error("Error al llamar a la API del pipeline:", err);
+        alert("❌ Error de conexión al intentar ejecutar el pipeline en el servidor.");
+    } finally {
+        document.getElementById("btn-run-pipeline").disabled = false;
+    }
 }
