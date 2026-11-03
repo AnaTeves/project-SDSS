@@ -3,11 +3,12 @@ import os
 import io
 import httpx
 import asyncio
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, BackgroundTasks 
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from fpdf import FPDF
+import subprocess 
 
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
@@ -48,6 +49,9 @@ engine = create_engine(DATABASE_URL)
 # Cliente HTTP global y asíncrono exclusivo para Grafana
 http_client = httpx.AsyncClient(timeout=20.0)
 
+# Flag de control en memoria para evitar ejecuciones simultáneas del pipeline ETL
+etl_en_progreso = False
+
 @app.on_event("shutdown")
 async def shutdown_event():
     # Asegura cerrar las conexiones HTTP al apagar el servidor de Render
@@ -85,6 +89,42 @@ async def descargar_panel_grafana(poligono_id: int, panel_id: int) -> bytes:
         return res.content
     except httpx.RequestError:
         raise HTTPException(status_code=504, detail=f"Timeout al conectar con Grafana para el panel {panel_id}")
+
+def correr_script_etl():
+    """Función síncrona que ejecuta el pipeline pesado en segundo plano."""
+    global etl_en_progreso
+    try:
+        resultado = subprocess.run(["python3", "main.py"], check=True, capture_output=True, text=True)
+        print("Pipeline ETL ejecutado con éxito:", resultado.stdout)
+    except subprocess.CalledProcessError as err:
+        print("Error al ejecutar el pipeline ETL:", err.stderr)
+    finally:
+        # Importante: Pase lo que pase (éxito o fallo), liberamos el flag
+        etl_en_progreso = False
+
+"""
+Endpoint administrativo para disparar la actualización de datos (MCDA / ETL) por demanda.
+Evita problemas de timeout respondiendo de inmediato gracias a BackgroundTasks.
+"""
+@app.post("/api/admin/run-etl")
+async def executar_pipeline_etl(background_tasks: BackgroundTasks):
+    global etl_en_progreso
+    
+    # Si ya se está corriendo un proceso, rechazamos la nueva petición (Anti-doble-clic)
+    if etl_en_progreso:
+        raise HTTPException(
+            status_code=429, 
+            detail="El pipeline ya se encuentra en ejecucion. Por favor, espere a que finalice antes de intentar nuevamente."
+        )
+    
+    # Bloqueamos el flag e iniciamos la tarea asíncrona fuera del hilo principal de la API
+    etl_en_progreso = True
+    background_tasks.add_task(correr_script_etl)
+    
+    return {
+        "status": "success",
+        "message": "El procesamiento ETL fue iniciado en el servidor. La base de datos PostGIS será actualizada en breve."
+    }
 
 """
 Endpoint encargado de compilar los 3 paneles analíticos de Grafana para un polígono específico 
