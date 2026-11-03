@@ -432,7 +432,7 @@ function actualizarInterfazUsuario(user) {
         } else {
             userBadge.textContent = "Modo: Visitante";
             userBadge.className = "badge visitor";
-            adminControls.classList.add("hidden");
+            adminControls.style.display = "none";
         }
 
         if (btnLoginTrigger) btnLoginTrigger.classList.add("hidden");
