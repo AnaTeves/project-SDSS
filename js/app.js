@@ -602,25 +602,36 @@ window.buscarDesdeDashboard = function(idPoligono) {
 }
 
 async function ejecutarPipelineRemoto() {
-    const confirmacao = confirm("⚠️ ¿Esta seguro que desea reprocesar el modelo? El proceso recalculara los 429 poligonos y actualizara la base de datos. Esto puede demorar 1 minuto.");
+    const confirmacion = confirm("⚠️ ¿Esta seguro que desea reprocesar el modelo? El proceso recalculara los 429 poligonos y actualizara la base de datos. Esto puede demorar 1 minuto.");
     
-    if (!confirmacao) return;
+    if (!confirmacion) return;
 
     try {
         document.getElementById("btn-run-pipeline").disabled = true;
+
+        // Obtenemos la sesión actual y el token de Supabase
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        
+        if (error || !session) {
+            alert("❌ No se encontró una sesión activa. Por favor, vuelve a iniciar sesión.");
+            document.getElementById("btn-run-pipeline").disabled = false;
+            return;
+        }
+
+        // Enviamos la petición incluyendo el token en los headers
         const response = await fetch('https://backend-sdss.onrender.com/api/admin/run-etl', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}` // <- AQUÍ ENVIAMOS EL TOKEN
             }
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            alert("✅ " + data.message);
+            alert("✅ " + data.mensaje);
         } else {
-            // Maneja el error 429 (ya en ejecución) u otros errores del servidor
             alert("❌ Error en el servidor: " + (data.detail || "No fue posible iniciar el pipeline."));
         }
     } catch (err) {
