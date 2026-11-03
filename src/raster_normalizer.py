@@ -17,7 +17,7 @@ class RasterNormalizer:
         Motor de normalización y fuzzificación de variables ambientales.
         Permite configurar umbrales ecológicos para análisis de escenarios.
         """
-        self.clases_excluidas = clases_excluidas or [10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 24, 30, 32, 33]
+        self.clases_excluidas = clases_excluidas or [6, 9, 11, 14, 18, 19, 22, 23, 24, 25, 26, 27, 36, 57, 58, 61]
         
         # Umbrales configurables
         self.ndvi_min, self.ndvi_max = umbrales_ndvi
