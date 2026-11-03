@@ -397,7 +397,6 @@ if (btnLogout) {
 
 // Actualizar Roles en Interfaz y habilitar vistas exclusivas
 function actualizarInterfazUsuario(user) {
-    // Buscar o crear contenedor para controles de administrador
     let adminControls = document.getElementById("admin-controls");
     if (!adminControls) {
         adminControls = document.createElement("div");
@@ -411,9 +410,10 @@ function actualizarInterfazUsuario(user) {
                 🔄 Reprocesar MCDA (ETL)
             </button>
         `;
-        // Insertarlo al lado del badge de usuario (Asegúrate de que el contenedor padre exista en tu HTML)
-        const header = document.querySelector(".header-controls") || document.body;
-        header.insertBefore(adminControls, userBadge.nextSibling);
+
+        if (userBadge && userBadge.parentNode) {
+            userBadge.parentNode.insertBefore(adminControls, userBadge.nextSibling);
+        }
 
         // Listeners para los botones de administrador
         document.getElementById("btn-dashboard").addEventListener("click", abrirPanelAuditoria);
@@ -421,26 +421,28 @@ function actualizarInterfazUsuario(user) {
     }
 
     if (user) {
-        const userRole = user.user_metadata?.role || (user.email.includes('admin') ? 'admin' : 'visitor');
-        
+        // La única validación válida: leer la propiedad role del JWT de Supabase
+        const userRole = user.user_metadata?.role || 'visitante';
+
         if (userRole === 'admin') {
             userBadge.textContent = "Modo: Administrador";
             userBadge.className = "badge admin";
-            adminControls.classList.remove("hidden"); // Mostrar controles
+            adminControls.classList.remove("hidden");
         } else {
             userBadge.textContent = "Modo: Visitante";
             userBadge.className = "badge visitor";
-            adminControls.classList.add("hidden"); // Ocultar controles
+            adminControls.classList.add("hidden");
         }
 
         if (btnLoginTrigger) btnLoginTrigger.classList.add("hidden");
         if (btnLogout) btnLogout.classList.remove("hidden");
     } else {
+        // Estado sin autenticar
         userBadge.textContent = "Modo: Visitante";
         userBadge.className = "badge visitor";
         if (btnLoginTrigger) btnLoginTrigger.classList.remove("hidden");
         if (btnLogout) btnLogout.classList.add("hidden");
-        adminControls.classList.add("hidden"); // Ocultar controles al desloguear
+        adminControls.classList.add("hidden");
     }
 }
 
