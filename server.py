@@ -1,4 +1,4 @@
-import json
+import sys
 import os
 import jwt
 from jwt import PyJWKClient
@@ -134,12 +134,14 @@ def correr_script_etl():
     """Función síncrona que ejecuta el pipeline pesado en segundo plano."""
     global etl_en_progreso
     try:
-        resultado = subprocess.run(["python3", "main.py"], check=True, capture_output=True, text=True)
+        resultado = subprocess.run([sys.executable, "main.py"], check=True, capture_output=True, text=True)
         print("Pipeline ETL ejecutado con éxito:", resultado.stdout)
     except subprocess.CalledProcessError as err:
-        print("Error al ejecutar el pipeline ETL:", err.stderr)
+        print("Error al ejecutar el pipeline ETL (stderr):", err.stderr)
+        print("Error al ejecutar el pipeline ETL (stdout):", err.stdout)
+    except Exception as e:
+        print("Error inesperado en subprocess:", str(e))
     finally:
-        # Importante: Pase lo que pase (éxito o fallo), liberamos el flag
         etl_en_progreso = False
 
 """
