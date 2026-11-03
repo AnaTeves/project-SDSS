@@ -1,6 +1,8 @@
 import json
 import os
 import jwt
+from jwt import PyJWKClient
+from os import getenv
 import io
 import httpx
 import asyncio
@@ -43,7 +45,13 @@ app.add_middleware(
 DATABASE_URL = os.getenv("DATABASE_URL")
 GRAFANA_BASE_URL = os.getenv("GRAFANA_BASE_URL", "https://grafana.net")
 GRAFANA_TOKEN = os.getenv("GRAFANA_API_TOKEN")
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+
+SUPABASE_URL = getenv("SUPABASE_URL")
+if not SUPABASE_URL:
+    raise ValueError("ERROR: SUPABASE_URL no está configurada")
+    
+jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
+jwks_client = PyJWKClient(jwks_url)
 
 if not DATABASE_URL:
     raise ValueError("ERROR: DATABASE_URL no está configurada en el archivo .env")
@@ -57,27 +65,32 @@ http_client = httpx.AsyncClient(timeout=20.0)
 etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
 
 def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Valida la firma del token JWT contra el secreto de Supabase."""
+    """Valida la firma asimétrica del token JWT usando las claves públicas de Supabase."""
     token = credentials.credentials
     try:
-        # Decodifica y valida la firma automáticamente
+        # Extrae el 'kid' del token y busca su clave pública correspondiente
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        
+        # Decodifica usando la clave asimétrica y el algoritmo ES256
         payload = jwt.decode(
             token, 
-            SUPABASE_JWT_SECRET, 
-            algorithms=["HS256"],
+            signing_key.key, 
+            algorithms=["ES256", "RS256"], 
             options={"verify_aud": False} 
         )
         
-        # Validamos que el token pertenezca a un usuario autenticado
         if payload.get("role") != "authenticated":
             raise HTTPException(status_code=403, detail="Rol no autorizado para esta acción")
             
         return payload
         
+    except jwt.PyJWKClientError as e:
+        raise HTTPException(status_code=500, detail=f"Error conectando con Supabase JWKS: {str(e)}")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="El token ha expirado. Vuelve a iniciar sesión.")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Credenciales inválidas o token modificado.")
+    except Exception as e:
+        print(f"DEBUG AUTH ERROR: {type(e).__name__} - {str(e)}")
+        raise HTTPException(status_code=401, detail=f"Token asimétrico inválido: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
