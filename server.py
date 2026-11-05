@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from fpdf import FPDF
 import subprocess 
 from main import ejecutar_pipeline
+from supabase import create_client, Client
 
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
@@ -59,32 +60,22 @@ http_client = httpx.AsyncClient(timeout=20.0)
 
 etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
 
-jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
-jwks_client = PyJWKClient(jwks_url, headers={"apikey": SUPABASE_ANON_KEY})
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Delega la validación de seguridad directamente a Supabase"""
     token = credentials.credentials
     try:
-        # Como ahora enviamos el apikey, Supabase nos dejará descargar la clave pública ES256 sin error 401
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        # Supabase hace la verificación de seguridad, caducidad y roles automáticamente
+        respuesta = supabase.auth.get_user(token)
         
-        # Validamos usando la clave pública descargada y el algoritmo correcto
-        payload = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["ES256", "RS256"],
-            options={"verify_aud": False}
-        )
-        
-        if payload.get("role") != "authenticated":
-            raise HTTPException(status_code=403, detail="Rol no autorizado")
+        if not respuesta.user:
+            raise HTTPException(status_code=401, detail="Token rechazado por Supabase")
             
-        return payload
+        return respuesta.user
         
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="El token expiró. Inicia sesión nuevamente.")
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Fallo en validación ES256: {str(e)}")
+        raise HTTPException(status_code=401, detail=f"No autorizado: {str(e)}")
     
 def tarea_etl_background():
     """Wrapper para manejar la ejecución del modelo y liberar el candado"""
