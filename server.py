@@ -13,6 +13,7 @@ from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from fpdf import FPDF
 import subprocess 
+from main import ejecutar_pipeline
 
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
@@ -29,6 +30,8 @@ app = FastAPI(
 )
 
 security = HTTPBearer()
+
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
 """
 Implementa FastAPI Middleware para habilitar el Intercambio de Recursos de Origen Cruzado (CORS) sin restricciones de puertos.
@@ -50,11 +53,11 @@ SUPABASE_URL = getenv("SUPABASE_URL")
 if not SUPABASE_URL:
     raise ValueError("ERROR: SUPABASE_URL no está configurada")
     
-jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
-jwks_client = PyJWKClient(jwks_url)
+#jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
+#jwks_client = PyJWKClient(jwks_url)
 
-if not DATABASE_URL:
-    raise ValueError("ERROR: DATABASE_URL no está configurada en el archivo .env")
+#if not DATABASE_URL:
+#    raise ValueError("ERROR: DATABASE_URL no está configurada en el archivo .env")
 
 # rear el motor de conexión
 engine = create_engine(DATABASE_URL)
@@ -65,32 +68,39 @@ http_client = httpx.AsyncClient(timeout=20.0)
 etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
 
 def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Valida la firma asimétrica del token JWT usando las claves públicas de Supabase."""
+    """Verifica el token usando el secreto JWT y el algoritmo HS256"""
     token = credentials.credentials
     try:
-        # Extrae el 'kid' del token y busca su clave pública correspondiente
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
-        
-        # Decodifica usando la clave asimétrica y el algoritmo ES256
+        # Decodificación simétrica directa (HS256)
         payload = jwt.decode(
-            token, 
-            signing_key.key, 
-            algorithms=["ES256", "RS256"], 
-            options={"verify_aud": False} 
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False} # Supabase a veces usa 'authenticated' en el audience
         )
         
-        if payload.get("role") != "authenticated":
-            raise HTTPException(status_code=403, detail="Rol no autorizado para esta acción")
+        # OPCIONAL: Si necesitas que sea estrictamente un admin, puedes validar su rol
+        # if payload.get("role") != "service_role":
+        #    raise HTTPException(status_code=403, detail="Acceso denegado: Se requiere rol de administrador")
             
         return payload
         
-    except jwt.PyJWKClientError as e:
-        raise HTTPException(status_code=500, detail=f"Error conectando con Supabase JWKS: {str(e)}")
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="El token ha expirado. Vuelve a iniciar sesión.")
+        raise HTTPException(status_code=401, detail="El token de Supabase ha expirado")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")
+
+def tarea_etl_background():
+    """Wrapper para manejar la ejecución del modelo y liberar el candado"""
+    global etl_en_progreso
+    try:
+        # Ejecuta tu modelo directamente en la memoria de FastAPI
+        ejecutar_pipeline()
     except Exception as e:
-        print(f"DEBUG AUTH ERROR: {type(e).__name__} - {str(e)}")
-        raise HTTPException(status_code=401, detail=f"Token asimétrico inválido: {str(e)}")
+        print(f"Error crítico durante la ejecución del ETL: {e}")
+    finally:
+        # Esto garantiza que el servidor se desbloquee incluso si el modelo falla
+        etl_en_progreso = False
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -149,17 +159,20 @@ Endpoint administrativo para disparar la actualización de datos (MCDA / ETL) po
 Evita problemas de timeout respondiendo de inmediato gracias a BackgroundTasks.
 """
 @app.post("/api/admin/run-etl")
-async def ejecutar_etl(background_tasks: BackgroundTasks, usuario_payload: dict = Depends(verificar_token_supabase)):
+async def run_etl(background_tasks: BackgroundTasks, admin_data: dict = Depends(verificar_token_supabase)):
     global etl_en_progreso
     
     if etl_en_progreso:
-        raise HTTPException(status_code=409, detail="El ETL ya está procesándose")
-        
+        raise HTTPException(status_code=409, detail="El modelo ya está en ejecución. Por favor espera.")
+    
+    # 1. Bloquear nuevas peticiones
     etl_en_progreso = True
     
-    background_tasks.add_task(correr_script_etl)
+    # 2. Enviar a segundo plano
+    background_tasks.add_task(tarea_etl_background)
     
-    return {"mensaje": "Pipeline ETL iniciado con éxito en segundo plano"}
+    # 3. Responder instantáneamente al frontend
+    return {"mensaje": "Validación exitosa. Modelo iniciado en segundo plano."}
 
 @app.get("/api/admin/etl-status")
 async def consultar_estado_etl():
