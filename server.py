@@ -53,11 +53,9 @@ SUPABASE_URL = getenv("SUPABASE_URL")
 if not SUPABASE_URL:
     raise ValueError("ERROR: SUPABASE_URL no está configurada")
     
-#jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
-#jwks_client = PyJWKClient(jwks_url)
+jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
+jwks_client = PyJWKClient(jwks_url)
 
-#if not DATABASE_URL:
-#    raise ValueError("ERROR: DATABASE_URL no está configurada en el archivo .env")
 
 # rear el motor de conexión
 engine = create_engine(DATABASE_URL)
@@ -68,26 +66,41 @@ http_client = httpx.AsyncClient(timeout=20.0)
 etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
 
 def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verifica el token usando el secreto JWT y el algoritmo HS256"""
+    """Verifica el token dinámicamente según el algoritmo que envíe Supabase"""
     token = credentials.credentials
     try:
-        # Decodificación simétrica directa (HS256)
-        payload = jwt.decode(
-            token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False} # Supabase a veces usa 'authenticated' en el audience
-        )
-        
-        # OPCIONAL: Si necesitas que sea estrictamente un admin, puedes validar su rol
-        # if payload.get("role") != "service_role":
-        #    raise HTTPException(status_code=403, detail="Acceso denegado: Se requiere rol de administrador")
+        # 1. Leer la cabecera del token sin verificar para extraer el algoritmo
+        unverified_header = jwt.get_unverified_header(token)
+        algoritmo = unverified_header.get("alg")
+
+        # 2. Elegir la validación correcta automáticamente
+        if algoritmo == "HS256":
+            # Si Supabase envía HS256, usamos la clave secreta
+            payload = jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                options={"verify_aud": False}
+            )
+        else:
+            # Si Supabase envía RS256/ES256, usamos las claves públicas (JWKS)
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["RS256", "ES256"],
+                options={"verify_aud": False}
+            )
+            
+        if payload.get("role") != "authenticated":
+            raise HTTPException(status_code=403, detail="Rol no autorizado")
             
         return payload
         
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="El token de Supabase ha expirado")
-    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail="El token ha expirado. Cierra sesión y vuelve a entrar.")
+    except Exception as e:
+        print(f"Error de JWT detallado: {type(e).__name__} - {str(e)}")
         raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")
 
 def tarea_etl_background():
