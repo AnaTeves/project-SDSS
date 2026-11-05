@@ -31,7 +31,14 @@ app = FastAPI(
 
 security = HTTPBearer()
 
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+# Leer la URL desde la variable de entorno
+DATABASE_URL = os.getenv("DATABASE_URL")
+GRAFANA_BASE_URL = os.getenv("GRAFANA_BASE_URL", "https://grafana.net")
+GRAFANA_TOKEN = os.getenv("GRAFANA_API_TOKEN")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_URL = getenv("SUPABASE_URL")
+if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    raise ValueError("ERROR: SUPABASE_URL o SUPABASE_ANON_KEY no están configuradas")
 
 """
 Implementa FastAPI Middleware para habilitar el Intercambio de Recursos de Origen Cruzado (CORS) sin restricciones de puertos.
@@ -44,19 +51,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Leer la URL desde la variable de entorno
-DATABASE_URL = os.getenv("DATABASE_URL")
-GRAFANA_BASE_URL = os.getenv("GRAFANA_BASE_URL", "https://grafana.net")
-GRAFANA_TOKEN = os.getenv("GRAFANA_API_TOKEN")
-
-SUPABASE_URL = getenv("SUPABASE_URL")
-if not SUPABASE_URL:
-    raise ValueError("ERROR: SUPABASE_URL no está configurada")
-    
-#jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
-#jwks_client = PyJWKClient(jwks_url)
-
-
 # rear el motor de conexión
 engine = create_engine(DATABASE_URL)
 
@@ -65,18 +59,20 @@ http_client = httpx.AsyncClient(timeout=20.0)
 
 etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
 
+jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
+jwks_client = PyJWKClient(jwks_url, headers={"apikey": SUPABASE_ANON_KEY})
+
 def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
-        # 1. Leemos el algoritmo nativo que trae el token
-        cabecera = jwt.get_unverified_header(token)
-        algoritmo_detectado = cabecera.get("alg", "HS256")
+        # Como ahora enviamos el apikey, Supabase nos dejará descargar la clave pública ES256 sin error 401
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
         
-        # 2. Validamos 100% localmente usando tu clave secreta de Render
+        # Validamos usando la clave pública descargada y el algoritmo correcto
         payload = jwt.decode(
             token,
-            SUPABASE_JWT_SECRET,
-            algorithms=[algoritmo_detectado],
+            signing_key.key,
+            algorithms=["ES256", "RS256"],
             options={"verify_aud": False}
         )
         
@@ -85,8 +81,10 @@ def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends
             
         return payload
         
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="El token expiró. Inicia sesión nuevamente.")
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")
+        raise HTTPException(status_code=401, detail=f"Fallo en validación ES256: {str(e)}")
     
 def tarea_etl_background():
     """Wrapper para manejar la ejecución del modelo y liberar el candado"""
