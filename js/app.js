@@ -59,9 +59,11 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 // Estilos dinámicos para los polígonos
 function obtenerColor(clasificacion) {
     switch (clasificacion) {
-        case 'Apto para reforestar y legal': return '#22c55e';
-        case 'Apto pero ilegal':             return '#f59e0b';
-        default:                             return '#ef4444';
+        case 'Apto - Reforestación productiva (Zona verde)': return '#22c55e'; // Verde
+        case 'Apto - Enriquecimiento sostenible (Zona amarilla)':  return '#eab308'; // Amarillo
+        case 'Apto - Prioridad restauración ecológica (Zona roja)':return '#ef4444'; // Rojo (pero apto biofísico)
+        case 'No apto (Uso excluido)':                             return '#6b7280'; // Gris (MapBiomas)
+        default:                                                   return '#1e293b'; // Gris Oscuro (No apto biofísico)
     }
 }
 
@@ -92,34 +94,83 @@ function resaltarPoligono(layer) {
 }
 
 function generarDiagnostico(props) {
-    let motivos = [];
-    const propOtbnVal = (props.prop_otbn !== null && props.prop_otbn !== undefined) 
-        ? (props.prop_otbn * 100).toFixed(1) 
-        : "0.0";
+    const pRojo = props.pct_rojo || 0;
+    const pAmarillo = props.pct_amarillo || 0;
+    const pVerde = props.pct_verde || 0;
+    
+    // Cálculo de Zona Libre
+    const sumaOtbn = pRojo + pAmarillo + pVerde;
+    const pLibre = (sumaOtbn >= 100) ? 0 : parseFloat((100 - sumaOtbn).toFixed(1));
+    const pVerdeTotal = pVerde;
 
-    if (props.aptitud_final === 0 || props.clasificacion_final !== 'Apto para reforestar y legal') {
-        if (props.mascara_otbn === 0) {
-            motivos.push(`<b>Restricción Legal (OTBN):</b> Cobertura permitida es del ${propOtbnVal}% (Requerido ≥ 98%).`);
-        }
-        if (props.aptitud_biofisica < 0.65) {
-            motivos.push(`<b>Baja aptitud biofísica:</b> Puntaje insuficiente (${props.aptitud_biofisica.toFixed(2)}) por limitantes hídricas, edáficas o vegetativas.`);
-        }
-        if (motivos.length === 0) {
-            motivos.push(`<b>Restricción de uso del suelo (MapBiomas):</b> Cobertura actual no idónea para reforestación.`);
-        }
+    // Determinación de la categoría dominante real según los porcentajes
+    const dominaRojo = (pRojo > pAmarillo) && (pRojo > pVerdeTotal);
+    const dominaAmarillo = (pAmarillo > pRojo) && (pAmarillo > pVerdeTotal);
+
+    // Construcción dinámica de la lista de porcentajes
+    let listaComposicion = [];
+    if (pRojo > 0) listaComposicion.push(`<span>🟥 <b>Zona Roja (Restauración):</b> ${pRojo.toFixed(1)}%</span>`);
+    if (pAmarillo > 0) listaComposicion.push(`<span>🟨 <b>Zona Amarilla (Manejo):</b> ${pAmarillo.toFixed(1)}%</span>`);
+    if (pVerde > 0) listaComposicion.push(`<span>🟩 <b>Zona Verde (Productiva):</b> ${pVerde.toFixed(1)}%</span>`);
+    if (pLibre > 0) listaComposicion.push(`<span>⬜ <b>Zona Libre (Agrícola/Otros):</b> ${pLibre}%</span>`);
+
+    const htmlComposicion = `
+        <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,0.1); font-size: 11px; display: flex; flex-direction: column; gap: 2px;">
+            <b>Composición del polígono:</b>
+            ${listaComposicion.join('')}
+        </div>`;
+
+    const esUsoExcluido = props.clasificacion_final.includes('Uso excluido') || props.clasificacion_final.includes('excluido');
+    const esBajaAptitud = props.aptitud_biofisica <= 0.60 || props.aptitud_suelo <= 0.40;
+
+    // 1. Caso No Apto (Filtro Biofísico / MapBiomas)
+    if (esBajaAptitud || esUsoExcluido) {
+        let motivos = [];
+        if (esBajaAptitud) motivos.push(`<b>Baja aptitud edafoclimática:</b> Puntaje biofísico insuficiente (${(props.aptitud_biofisica || 0).toFixed(2)}).`);
+        if (esUsoExcluido) motivos.push(`<b>Uso de suelo no permitido (MapBiomas):</b> Cobertura no idónea.`);
 
         return `
-            <div class="diagnostic-box fail">
-                <b>🔴 Causa de exclusión:</b>
-                <ul style="margin: 5px 0 0; padding-left: 15px;">
+            <div class="diagnostic-box fail" style="background:#f3f4f6; border: 1px solid #d1d5db; padding: 10px; border-radius: 6px;">
+                <b style="color:#374151;">⚪ Terreno no apto</b>
+                <ul style="margin: 5px 0 0; padding-left: 15px; font-size: 11px; color: #4b5563;">
                     ${motivos.map(m => `<li>${m}</li>`).join('')}
                 </ul>
+                ${htmlComposicion}
             </div>`;
     }
 
+    // 2. Predominancia Real de Zona Roja
+    if (dominaRojo) {
+        return `
+            <div class="diagnostic-box restoration" style="background:#fef2f2; border: 1px solid #fca5a5; padding: 10px; border-radius: 6px;">
+                <b style="color:#991b1b;">🔴 Restauración ecológica (Predominante)</b>
+                <p style="margin: 4px 0 0; font-size: 11px; color: #7f1d1d;">
+                    La mayor superficie del polígono corresponde a Zona Roja. Terreno altamente idóneo para proyectos de restauración biológica sin alterar la estructura del bosque circundante.
+                </p>
+                ${htmlComposicion}
+            </div>`;
+    }
+
+    // 3. Predominancia Real de Zona Amarilla
+    if (dominaAmarillo) {
+        return `
+            <div class="diagnostic-box warning" style="background:#fefce8; border: 1px solid #fef08a; padding: 10px; border-radius: 6px;">
+                <b style="color:#854d0e;">🟨 Enriquecimiento sostenible (Predominante)</b>
+                <p style="margin: 4px 0 0; font-size: 11px; color: #713f12;">
+                    La mayoría del terreno pertenece a Zona Amarilla. Se permite la intervención para plantar quebracho en parches degradados, abrir sutilmente líneas de enriquecimiento o clausurar sectores temporalmente para asegurar que los plantines jóvenes sobrevivan al ganado.
+                </p>
+                ${htmlComposicion}
+            </div>`;
+    }
+
+    // 4. Predominancia Real de Zona Verde / Libre
     return `
-        <div class="diagnostic-box pass">
-            <b>🟢 Terreno válido:</b> Cumple con los requisitos legales (OTBN ${propOtbnVal}%) e idoneidad edafoclimática.
+        <div class="diagnostic-box pass" style="background:#f0fdf4; border: 1px solid #86efac; padding: 10px; border-radius: 6px;">
+            <b style="color:#166534;">🟩 Reforestación productiva (Predominante)</b>
+            <p style="margin: 4px 0 0; font-size: 11px; color: #14532d;">
+                Predomina la superficie de Zona Verde o Libre. Idóneo para plantaciones en bloque o cortinas forestales de quebracho colorado.
+            </p>
+            ${htmlComposicion}
         </div>`;
 }
 
@@ -145,9 +196,12 @@ function seleccionarPoligono(feature, layer) {
     }
     const container = document.getElementById('detalle-suelo');
     
-    let badgeClass = 'badge-danger';
-    if (props.clasificacion_final === 'Apto para reforestar y legal') badgeClass = 'badge-success';
-    else if (props.clasificacion_final === 'Apto pero ilegal') badgeClass = 'badge-warning';
+    let badgeClass = 'badge-danger'; // Gris oscuro / Rojo por defecto
+    const claseTexto = props.clasificacion_final || "";
+    
+    if (claseTexto.includes('verde')) badgeClass = 'badge-success'; // Verde
+    else if (claseTexto.includes('Enriquecimiento sostenible')) badgeClass = 'badge-warning'; // Amarillo
+    else if (claseTexto.includes('Uso excluido')) badgeClass = 'badge-secondary'; // Gris
 
     container.innerHTML = `
         <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
@@ -161,7 +215,7 @@ function seleccionarPoligono(feature, layer) {
             <div class="card-title">Métricas de Idoneidad Biofísica</div>
             ${crearBarraProgreso('Aptitud Suelo', props.aptitud_suelo)}
             ${crearBarraProgreso('Aptitud Lluvia', props.aptitud_lluvia)}
-            ${crearBarraProgreso('NDVI', props.aptitud_ndvi)}
+            ${crearBarraProgreso('Índice de Vegetación de Diferencia Normalizada', props.aptitud_ndvi)}
             <hr style="border:0; border-top: 1px solid #e2e8f0; margin: 8px 0;">
             ${crearBarraProgreso('Puntaje biofísico base', props.aptitud_biofisica)}
         </div>
@@ -170,13 +224,15 @@ function seleccionarPoligono(feature, layer) {
             <div class="card-title">Atributos del suelo</div>
             <div style="font-size: 12px; color: #475569;">
                 <b>Subgrupo:</b> ${props.subgrupo || 'Sin datos'}<br>
-                <b>Textura Superficial:</b> ${props.textura || 'Sin datos'}
+                <b>Textura superficial:</b> ${props.textura || 'Sin datos'}
             </div>
         </div>
 
         <div style="text-align: center; padding: 10px; background: #e2e8f0; border-radius: 8px; margin-top: 10px;">
             <span style="font-size: 11px; text-transform: uppercase; color: #475569; font-weight: 700;">Puntaje final</span>
-            <div style="font-size: 22px; font-weight: 700; color: #0f172a;">${props.aptitud_final.toFixed(2)}</div>
+            <div style="font-size: 22px; font-weight: 700; color: #0f172a;">
+    ${(props.aptitud_biofisica || props.aptitud_final).toFixed(2)}
+</div>
         </div>
 
         <button class="btn-reporte-pdf" onclick="descargarReportePDF(${props.id})">
@@ -213,6 +269,7 @@ function onEachFeature(feature, layer) {
 let geojsonLayer; // Declaramos la variable global para usarla en el buscador
 
 fetch('https://backend-sdss.onrender.com/api/aptitud-suelos')
+//fetch('http://localhost:8000/api/aptitud-suelos')
     .then(response => {
         if (!response.ok) throw new Error("Error en la respuesta de la red");
         return response.json();
@@ -228,28 +285,6 @@ fetch('https://backend-sdss.onrender.com/api/aptitud-suelos')
         console.error("Error cargando los polígonos:", error);
         document.getElementById('detalle-suelo').innerHTML = `<p style="color:red; font-size: 12px;">Error de conexión con la API FastAPI.</p>`;
     });
-
-// ==========================================
-// LÓGICA DEL BUSCADOR DE POLÍGONOS
-// ==========================================
-const inputSearch = document.getElementById('search-polygon-id');
-const btnSearch = document.getElementById('btn-search');
-
-function ejecutarBusqueda() {
-    const idBuscado = parseInt(inputSearch.value.trim());
-    if (!idBuscado) return;
-
-    const layer = capasPorId[idBuscado];
-    if (layer) {
-        map.panTo(layer.getBounds().getCenter());
-        seleccionarPoligono(layer.feature, layer);
-    } else {
-        alert(`No se encontró el polígono con ID #${idBuscado}`);
-    }
-}
-
-if (btnSearch) btnSearch.addEventListener('click', ejecutarBusqueda);
-if (inputSearch) inputSearch.addEventListener('keypress', (e) => { if (e.key === 'Enter') ejecutarBusqueda(); });
 
 // ==========================================
 // LÓGICA DEL BUSCADOR POR COORDENADAS

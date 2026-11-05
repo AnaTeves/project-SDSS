@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌳</text></svg>">
-    <title>SITRA Chaco</title>
+    <title>SitCha</title>
 
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -28,8 +28,9 @@
         <div class="modal-card">
             <div class="modal-header-logo">
                 <span class="logo-icon">🌳</span>
-                <h2>SITRA Chaco</h2>
-                <p>Sistema de Información Territorial para la Reforestación y Aptitud Ambiental del Quebracho Colorado Chaqueño</p>
+                <h2>SITCHA</h2>
+                <h4>Sistema de Información Territorial para la evaluación edafoclimática y normativa del Quebracho Colorado en el Chaco.</h4>
+                <p>Procesa variables ambientales, series satelitales y el ordenamiento territorial de bosques nativos para mapear la aptitud biofísica del terreno y priorizar áreas de intervención forestal, sirviendo de soporte para la toma de decisiones sostenibles.</p>
             </div>
             
             <div class="access-options">
@@ -46,7 +47,7 @@
 
                 <!-- Botón para desplegar Form Admin -->
                 <button id="btn-toggle-admin" class="btn-outline" type="button">
-                    🔐 Iniciar Sesión como Administrador
+                    🔐 Iniciar sesión como administrador
                 </button>
             </div>
 
@@ -62,7 +63,7 @@
                     <input type="password" id="login-password" required placeholder="••••••••" />
                 </div>
 
-                <button type="submit" class="btn-submit">Ingresar al Sistema</button>
+                <button type="submit" class="btn-submit">Ingresar al sistema</button>
                 <button type="button" id="btn-back-options" class="btn-link">← Volver a opciones</button>
             </form>
             
@@ -75,7 +76,7 @@
         <div class="top-bar-left" style="display: flex; gap: 20px; align-items: center;">
             <!-- Buscador por Coordenadas -->
             <div class="search-group" style="display: flex; align-items: center; gap: 8px;">
-                <h1 class="brand-title" style="margin: 0; font-size: 15px;">Coordenadas:</h1>
+                <h1 class="brand-title" style="margin: 0; font-size: 15px;">Buscar por coordenadas:</h1>
                 <div class="search-box">
                     <input type="text" id="search-coords" placeholder="-26.8, -60.5" style="width: 140px;" />
                     <button id="btn-search-coords">🔍</button>
@@ -85,8 +86,8 @@
 
         <div class="top-bar-right">
             <span id="user-badge" class="badge visitor">Modo: Visitante</span>
-            <button id="btn-login-trigger" class="btn-primary">Iniciar Sesión</button>
-            <button id="btn-logout" class="btn-secondary hidden">Cerrar Sesión</button>
+            <button id="btn-login-trigger" class="btn-primary">Iniciar sesión</button>
+            <button id="btn-logout" class="btn-secondary hidden">Cerrar sesión</button>
         </div>
     </header>
 
@@ -102,17 +103,19 @@
         
         <div id="detalle-suelo">
             <p style="color: #64748b; font-size: 13px; text-align: center; margin-top: 20px;">
-                Selecciona un polígono en el mapa o búscalo por ID para inspeccionar sus restricciones y puntaje.
+                Selecciona un polígono en el mapa o búscalo por coordenadas para inspeccionar sus restricciones y puntaje.
             </p>
         </div>
     </div>
 
     <!-- Leyenda -->
     <div class="legend">
-        <h4>Leyenda de aptitud y legalidad</h4>
-        <div class="legend-item"><div class="legend-color" style="background: #22c55e;"></div> Apto Legal (Reforestación)</div>
-        <div class="legend-item"><div class="legend-color" style="background: #f59e0b;"></div> Apto Biofísico / Restringido por Ley</div>
-        <div class="legend-item"><div class="legend-color" style="background: #ef4444;"></div> No Apto (Biofísico / Cobertura)</div>
+        <h4>Referencias</h4>
+        <div class="legend-item"><div class="legend-color" style="background: #22c55e;"></div> Apto reforestación productiva (Zona Verde)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #eab308;"></div> Apto manejo sostenible y enriquecimiento (Zona Amarilla)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #ef4444;"></div> Prioridad restauración (Zona Roja)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #6b7280;"></div> No apto (Uso de suelo excluido)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #1e293b;"></div> No apto biofísicamente</div>
     </div>
 
     <!-- Script Principal -->

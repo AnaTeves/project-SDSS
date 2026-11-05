@@ -64,12 +64,16 @@ class ReforestationPipeline:
         es_uso_excluido = self.motor_raster.generar_mascara_restricciones(df_resultado)
         
         # Capa OTBN: Robustez ante nulos de PostGIS (0 = Restringido, 1 = Permitido)
-        if 'val_otbn' not in df_resultado.columns:
-            print("ADVERTENCIA: La columna 'val_otbn' no existe. Se asume restricción total (0).")
-            df_resultado['val_otbn'] = 0
-            
-        df_resultado['mascara_otbn'] = pd.to_numeric(df_resultado['val_otbn'], errors='coerce').fillna(0).astype(int)
-        es_ilegal_otbn = df_resultado['mascara_otbn'] == 0
+        for col in ['pct_rojo', 'pct_amarillo', 'pct_verde']:
+            if col not in df_resultado.columns:
+                df_resultado[col] = 0.0
+
+        # Cálculo en variables temporales (no se añaden como columnas a la base de datos)
+        pct_libre_temp = (100.0 - (df_resultado['pct_rojo'] + df_resultado['pct_amarillo'] + df_resultado['pct_verde'])).clip(lower=0.0)
+
+        # Criterio de Mayoría evaluado sobre las variables temporales
+        es_domina_rojo = (df_resultado['pct_rojo'] > df_resultado['pct_amarillo']) & (df_resultado['pct_rojo'] > df_resultado['pct_verde'])
+        es_domina_amarillo = (df_resultado['pct_amarillo'] > df_resultado['pct_rojo']) & (df_resultado['pct_amarillo'] > df_resultado['pct_verde'])
 
         # Umbral científico de aptitud biofísica y viabilidad del sustrato edáfico
         UMBRAL_APTITUD = 0.60
@@ -77,23 +81,28 @@ class ReforestationPipeline:
 
         # Clasificación Estricta en las 3 Categorías
         print("[4/4] Clasificando polígonos bajo criterios edafoclimáticos y legales...")
+        
         condiciones = [
-            (es_apto_biofisico) & (~es_ilegal_otbn) & (~es_uso_excluido),   # Caso 1: Apto y Legal
-            (es_apto_biofisico) & ((es_ilegal_otbn) | (es_uso_excluido)),   # Caso 2: Apto pero Ilegal
-            (~es_apto_biofisico)                                            # Caso 3: No Apto
+            (~es_apto_biofisico),
+            (es_apto_biofisico) & (es_uso_excluido),
+            (es_apto_biofisico) & (es_domina_rojo),
+            (es_apto_biofisico) & (es_domina_amarillo),
+            (es_apto_biofisico)  # Domina Verde o Libre
         ]
         
         categorias = [
-            'Apto para reforestar y legal',
-            'Apto pero ilegal',
-            'No apto'
+            'No apto',
+            'No apto (Uso excluido)',
+            'Apto - Prioridad restauración ecológica (Zona roja)',
+            'Apto - Enriquecimiento sostenible (Zona amarilla)',
+            'Apto - Reforestación productiva (Zona verde)'
         ]
         
         df_resultado['clasificacion_final'] = np.select(condiciones, categorias, default='No apto')
 
-        # Aplicación del Kill Switch definitivo (Puntaje 0 si no es legal o si es inapto)
+        # Kill Switch Dinámico: Retiene el puntaje solo para zonas Productivas o de Enriquecimiento
         df_resultado['aptitud_final'] = np.where(
-            (df_resultado['clasificacion_final'] == 'Apto para reforestar y legal'),
+            df_resultado['clasificacion_final'].str.contains('Apto'),
             df_resultado['aptitud_biofisica'],
             0.00
         )

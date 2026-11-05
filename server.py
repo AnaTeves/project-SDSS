@@ -188,7 +188,7 @@ async def descargar_reporte_pdf(poligono_id: int):
             v.lat_max, 
             v.lon_min, 
             v.lon_max 
-        FROM mapa_aptitud_final m
+        FROM mapa_aptitud_finalv2 m
         JOIN vista_metadatos_pdf v ON m.id = v.id
         WHERE m.id = :id;
     """)
@@ -375,12 +375,13 @@ def obtener_aptitud_suelos():
             aptitud_lluvia,
             aptitud_ndvi,
             aptitud_biofisica,
-            mascara_otbn,
-            prop_otbn,
+            pct_rojo,
+            pct_amarillo,
+            pct_verde,
             clasificacion_final,
             aptitud_final,
             ST_AsGeoJSON(ST_Transform(geom, 4326))::json AS geometria
-        FROM "mapa_aptitud_final";
+        FROM "mapa_aptitud_finalv2";
     """
     # conexion segura a la base de datos
     try:
@@ -399,14 +400,15 @@ def obtener_aptitud_suelos():
                         "id": row.id,
                         "subgrupo": row.subgrupo,
                         "textura": row.textura,
-                        "aptitud_suelo": safe_float(row.aptitud_suelo),
-                        "aptitud_lluvia": safe_float(row.aptitud_lluvia),
-                        "aptitud_ndvi": safe_float(row.aptitud_ndvi),
-                        "aptitud_biofisica": safe_float(row.aptitud_biofisica),
-                        "mascara_otbn": int(row.mascara_otbn) if row.mascara_otbn is not None else 0,
-                        "prop_otbn": safe_float(row.prop_otbn),
-                        "clasificacion_final": row.clasificacion_final if row.clasificacion_final else "No apto",
-                        "aptitud_final": safe_float(row.aptitud_final)
+                        "aptitud_suelo": row.aptitud_suelo,
+                        "aptitud_lluvia": row.aptitud_lluvia,
+                        "aptitud_ndvi": row.aptitud_ndvi,
+                        "aptitud_biofisica": row.aptitud_biofisica,
+                        "pct_rojo": row.pct_rojo,
+                        "pct_amarillo": row.pct_amarillo,
+                        "pct_verde": row.pct_verde,
+                        "clasificacion_final": row.clasificacion_final,
+                        "aptitud_final": row.aptitud_final
                     }
                 }
                 features.append(feature)
