@@ -66,43 +66,30 @@ http_client = httpx.AsyncClient(timeout=20.0)
 etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
 
 def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verifica el token dinámicamente según el algoritmo que envíe Supabase"""
     token = credentials.credentials
     try:
-        # 1. Leer la cabecera del token sin verificar para extraer el algoritmo
-        unverified_header = jwt.get_unverified_header(token)
-        algoritmo = unverified_header.get("alg")
-
-        # 2. Elegir la validación correcta automáticamente
-        if algoritmo == "HS256":
-            # Si Supabase envía HS256, usamos la clave secreta
-            payload = jwt.decode(
-                token,
-                SUPABASE_JWT_SECRET,
-                algorithms=["HS256"],
-                options={"verify_aud": False}
-            )
-        else:
-            # Si Supabase envía RS256/ES256, usamos las claves públicas (JWKS)
-            signing_key = jwks_client.get_signing_key_from_jwt(token)
-            payload = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=["RS256", "ES256"],
-                options={"verify_aud": False}
-            )
-            
+        # Extrae el algoritmo exacto directamente de la cabecera del token
+        cabecera = jwt.get_unverified_header(token)
+        algoritmo_detectado = cabecera.get("alg", "HS256")
+        
+        # Inyecta dinámicamente ese algoritmo en la lista de permitidos
+        payload = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=[algoritmo_detectado],
+            options={"verify_aud": False}
+        )
+        
         if payload.get("role") != "authenticated":
             raise HTTPException(status_code=403, detail="Rol no autorizado")
             
         return payload
         
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="El token ha expirado. Cierra sesión y vuelve a entrar.")
     except Exception as e:
-        print(f"Error de JWT detallado: {type(e).__name__} - {str(e)}")
-        raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")
-
+        # Si falla, el mensaje te dirá exactamente qué algoritmo bloqueó la ejecución
+        alg = jwt.get_unverified_header(token).get("alg", "Desconocido") if token else "Ninguno"
+        raise HTTPException(status_code=401, detail=f"Error JWT: {str(e)} | Algoritmo del token: {alg}")
+    
 def tarea_etl_background():
     """Wrapper para manejar la ejecución del modelo y liberar el candado"""
     global etl_en_progreso
@@ -152,20 +139,6 @@ async def descargar_panel_grafana(poligono_id: int, panel_id: int) -> bytes:
         return res.content
     except httpx.RequestError:
         raise HTTPException(status_code=504, detail=f"Timeout al conectar con Grafana para el panel {panel_id}")
-
-def correr_script_etl():
-    """Función síncrona que ejecuta el pipeline pesado en segundo plano."""
-    global etl_en_progreso
-    try:
-        resultado = subprocess.run([sys.executable, "main.py"], check=True, capture_output=True, text=True)
-        print("Pipeline ETL ejecutado con éxito:", resultado.stdout)
-    except subprocess.CalledProcessError as err:
-        print("Error al ejecutar el pipeline ETL (stderr):", err.stderr)
-        print("Error al ejecutar el pipeline ETL (stdout):", err.stdout)
-    except Exception as e:
-        print("Error inesperado en subprocess:", str(e))
-    finally:
-        etl_en_progreso = False
 
 """
 Endpoint administrativo para disparar la actualización de datos (MCDA / ETL) por demanda.
