@@ -53,8 +53,8 @@ SUPABASE_URL = getenv("SUPABASE_URL")
 if not SUPABASE_URL:
     raise ValueError("ERROR: SUPABASE_URL no está configurada")
     
-jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
-jwks_client = PyJWKClient(jwks_url)
+#jwks_url = f"{SUPABASE_URL}/auth/v1/jwks"
+#jwks_client = PyJWKClient(jwks_url)
 
 
 # rear el motor de conexión
@@ -68,11 +68,11 @@ etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline
 def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
-        # Extrae el algoritmo exacto directamente de la cabecera del token
+        # 1. Leemos el algoritmo nativo que trae el token
         cabecera = jwt.get_unverified_header(token)
         algoritmo_detectado = cabecera.get("alg", "HS256")
         
-        # Inyecta dinámicamente ese algoritmo en la lista de permitidos
+        # 2. Validamos 100% localmente usando tu clave secreta de Render
         payload = jwt.decode(
             token,
             SUPABASE_JWT_SECRET,
@@ -86,9 +86,7 @@ def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends
         return payload
         
     except Exception as e:
-        # Si falla, el mensaje te dirá exactamente qué algoritmo bloqueó la ejecución
-        alg = jwt.get_unverified_header(token).get("alg", "Desconocido") if token else "Ninguno"
-        raise HTTPException(status_code=401, detail=f"Error JWT: {str(e)} | Algoritmo del token: {alg}")
+        raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")
     
 def tarea_etl_background():
     """Wrapper para manejar la ejecución del modelo y liberar el candado"""
