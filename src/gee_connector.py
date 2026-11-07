@@ -19,22 +19,31 @@ def _es_cuenta_de_servicio(ruta):
 
 
 def _diagnostico_secretos():
-    """Describe qué hay en /etc/secrets (solo nombres y permisos, nunca contenidos)."""
+    """Describe el entorno sin revelar secretos: servicio de Render, variables y archivos montados."""
+    partes = []
+    servicio = os.getenv("RENDER_SERVICE_NAME")
+    if servicio:
+        commit = (os.getenv("RENDER_GIT_COMMIT") or "")[:7]
+        partes.append(f"Servicio Render: '{servicio}' (commit {commit or 'desconocido'})")
+
+    valor = os.getenv("GEE_CREDENTIALS_JSON")
+    if valor is None:
+        partes.append("Variable GEE_CREDENTIALS_JSON: NO definida en este proceso")
+    else:
+        partes.append(f"Variable GEE_CREDENTIALS_JSON: definida pero vacía o inválida ({len(valor)} caracteres)")
+    similares = [k for k in os.environ if ("GEE" in k.upper() or "CRED" in k.upper()) and k != "GEE_CREDENTIALS_JSON"]
+    if similares:
+        partes.append("Variables con nombre parecido: " + ", ".join(similares))
+
     carpeta = "/etc/secrets"
     if not os.path.exists(carpeta):
-        return f"La carpeta {carpeta} no existe (no hay Secret Files montados en este servicio)."
-    try:
-        nombres = os.listdir(carpeta)
-    except PermissionError:
-        return f"Sin permiso para listar {carpeta}."
-    if not nombres:
-        return f"La carpeta {carpeta} está vacía."
-    detalles = []
-    for n in nombres:
-        ruta = os.path.join(carpeta, n)
-        legible = "legible" if os.access(ruta, os.R_OK) else "SIN permiso de lectura"
-        detalles.append(f"'{n}' ({legible})")
-    return f"Archivos en {carpeta}: " + ", ".join(detalles)
+        partes.append(f"{carpeta} no existe")
+    else:
+        encontrados = []
+        for raiz, _, archivos in os.walk(carpeta, followlinks=True):
+            encontrados += [os.path.relpath(os.path.join(raiz, n), carpeta) for n in archivos]
+        partes.append(f"Archivos en {carpeta}: " + (", ".join(encontrados) if encontrados else "ninguno"))
+    return ". ".join(partes) + "."
 
 
 def cargar_credenciales_gee(key_file='config/credentials.json'):
@@ -46,7 +55,10 @@ def cargar_credenciales_gee(key_file='config/credentials.json'):
       4. El archivo local `key_file` (relativo a la raíz del proyecto), como en desarrollo.
       5. Cualquier .json de cuenta de servicio dentro de /etc/secrets (por si tiene otro nombre).
     """
-    contenido = os.getenv("GEE_CREDENTIALS_JSON")
+    contenido = (os.getenv("GEE_CREDENTIALS_JSON") or "").strip()
+    # Tolera que el JSON se haya pegado entre comillas
+    if len(contenido) > 1 and contenido[0] == contenido[-1] and contenido[0] in "'\"":
+        contenido = contenido[1:-1].strip()
     if contenido:
         try:
             info = json.loads(contenido)
@@ -64,12 +76,8 @@ def cargar_credenciales_gee(key_file='config/credentials.json'):
     ]
     # Cualquier otro .json montado como Secret File
     if os.path.isdir("/etc/secrets"):
-        try:
-            candidatos += sorted(
-                os.path.join("/etc/secrets", n) for n in os.listdir("/etc/secrets") if n.lower().endswith(".json")
-            )
-        except PermissionError:
-            pass
+        for raiz, _, archivos in os.walk("/etc/secrets", followlinks=True):
+            candidatos += sorted(os.path.join(raiz, n) for n in archivos if n.lower().endswith(".json"))
 
     problemas = []
     vistos = set()
