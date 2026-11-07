@@ -1,7 +1,43 @@
+import os
 import ee
 import json
 import pandas as pd
 from google.oauth2 import service_account
+
+SCOPES_GEE = ['https://www.googleapis.com/auth/earthengine']
+RAIZ_PROYECTO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def cargar_credenciales_gee(key_file='config/credentials.json'):
+    """
+    Obtiene las credenciales de la cuenta de servicio de GEE probando, en orden:
+      1. Variable de entorno GEE_CREDENTIALS_JSON con el contenido completo del JSON (ideal para Render).
+      2. Variable de entorno GEE_CREDENTIALS_PATH con la ruta a un archivo.
+      3. Secret File de Render en /etc/secrets/credentials.json.
+      4. El archivo local `key_file` (relativo a la raíz del proyecto), como en desarrollo.
+    """
+    contenido = os.getenv("GEE_CREDENTIALS_JSON")
+    if contenido:
+        try:
+            info = json.loads(contenido)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"GEE_CREDENTIALS_JSON no contiene un JSON válido: {e}")
+        return service_account.Credentials.from_service_account_info(info, scopes=SCOPES_GEE)
+
+    candidatos = [
+        os.getenv("GEE_CREDENTIALS_PATH"),
+        "/etc/secrets/credentials.json",
+        key_file if os.path.isabs(key_file) else os.path.join(RAIZ_PROYECTO, key_file),
+    ]
+    for ruta in candidatos:
+        if ruta and os.path.isfile(ruta):
+            return service_account.Credentials.from_service_account_file(ruta, scopes=SCOPES_GEE)
+
+    raise FileNotFoundError(
+        "No se encontraron las credenciales de Google Earth Engine. En el servidor, define la "
+        "variable de entorno GEE_CREDENTIALS_JSON con el contenido de config/credentials.json "
+        "o súbelo como Secret File llamado 'credentials.json'."
+    )
 
 """
 Clase diseñada para interactuar con la API de Google Earth Engine utilizando una cuenta de servicio.
@@ -17,11 +53,7 @@ class GEEConnector:
     Automatiza la conexión segura con los servidores de GEE utilizando el archivo de credenciales de la cuenta de servicio (`config/credentials.json`) y el ID del proyecto.
     """
     def _autenticar(self):
-        scopes = ['https://www.googleapis.com/auth/earthengine']
-        credentials = service_account.Credentials.from_service_account_file(
-            self.key_file, 
-            scopes=scopes
-        )
+        credentials = cargar_credenciales_gee(self.key_file)
         ee.Initialize(credentials=credentials, project=self.project_id)
         print("Conexion exitosa con Google Earth Engine Assets")
 
@@ -94,4 +126,4 @@ class GEEConnector:
         suelos_gdf['val_uso_suelo'] = suelos_gdf['val_uso_suelo'].fillna(0).astype(int)
 
         print("Datos ambientales acoplados y alineados exitosamente desde la nube.")
-        return suelos_gdf
+        return suelos_gdf
