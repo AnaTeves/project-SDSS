@@ -676,6 +676,7 @@ let pipelineTimerId = null;
 let pipelineInicio = null;
 let pipelineEtapasDibujadas = null;
 let pipelineFallosConsecutivos = 0;
+let pipelineUltimoEstado = null;   // último estado "ejecutando" recibido del servidor
 
 async function obtenerTokenAdmin() {
     const { data: { session }, error } = await supabaseClient.auth.getSession();
@@ -849,6 +850,18 @@ function renderizarEstadoPipeline(st) {
     }
 }
 
+// Construye un estado de error conservando la última etapa conocida
+function estadoErrorDesdeUltimo(mensajeError) {
+    const ultimo = pipelineUltimoEstado || {};
+    return {
+        ...ultimo,
+        estado: "error",
+        subprogreso: null,
+        mensaje: "El pipeline se detuvo",
+        error: mensajeError,
+    };
+}
+
 async function consultarEstadoPipeline() {
     try {
         const token = await obtenerTokenAdmin();
@@ -858,16 +871,27 @@ async function consultarEstadoPipeline() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const st = await res.json();
         pipelineFallosConsecutivos = 0;
+
+        // El servidor respondió pero ya no tiene registro de la ejecución: se reinició a mitad de camino
+        if (pipelineUltimoEstado && !st.en_progreso && st.estado === "inactivo") {
+            const etapa = (pipelineUltimoEstado.etapas || [])[pipelineUltimoEstado.etapa_actual] || "desconocida";
+            renderizarEstadoPipeline(estadoErrorDesdeUltimo(
+                `El servidor se reinició durante la etapa «${etapa}» y la ejecución se perdió. ` +
+                "En el plan gratuito de Render esto suele deberse a falta de memoria (revisa los logs del servicio)."
+            ));
+            return;
+        }
+        if (st.estado === "ejecutando") pipelineUltimoEstado = st;
         renderizarEstadoPipeline(st);
     } catch (err) {
         pipelineFallosConsecutivos++;
         console.warn("No se pudo consultar el estado del pipeline:", err);
         pipelineUI.message.textContent = "Reintentando conexión con el servidor…";
-        if (pipelineFallosConsecutivos >= 10) {
-            renderizarEstadoPipeline({
-                estado: "error",
-                error: "Se perdió la conexión con el servidor. El proceso podría seguir ejecutándose; vuelve a abrir este panel más tarde.",
-            });
+        // ~60 s sin respuesta (Render tarda en reiniciar un servicio caído)
+        if (pipelineFallosConsecutivos >= 30) {
+            renderizarEstadoPipeline(estadoErrorDesdeUltimo(
+                "Se perdió la conexión con el servidor. El proceso podría seguir ejecutándose; vuelve a abrir este panel más tarde."
+            ));
         }
     }
 }
@@ -876,6 +900,7 @@ function iniciarSeguimientoPipeline() {
     detenerTimersPipeline();
     pipelineInicio = new Date();
     pipelineFallosConsecutivos = 0;
+    pipelineUltimoEstado = null;
     marcarBotonPipeline(true);
 
     pipelineTimerId = setInterval(() => {
@@ -915,6 +940,7 @@ async function retomarPipelineSiCorre() {
             prepararVistaProgreso(st.etapas);
             iniciarSeguimientoPipeline();
             if (st.inicio) pipelineInicio = new Date(st.inicio);
+            pipelineUltimoEstado = st;
             renderizarEstadoPipeline(st);
             mostrarModalPipeline("progress");
         }
