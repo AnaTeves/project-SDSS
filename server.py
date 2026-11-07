@@ -146,6 +146,7 @@ def tarea_etl_background():
                 resultado=resultado,
             )
             estado_etl["log"] = (estado_etl["log"] + [f"{hora}  Pipeline finalizado correctamente"])[-40:]
+        _cache_censo["datos"] = None  # el polígono/categoría de cada punto puede haber cambiado
     except Exception as e:
         traceback.print_exc()
         print(f"Error crítico durante la ejecución del ETL: {e}")
@@ -552,6 +553,72 @@ def obtener_aptitud_suelos():
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en PostGIS: {e}")
+
+# ==========================================
+# CAPA DE QUEBRACHOS CENSADOS (pública)
+# ==========================================
+_cache_censo = {"datos": None}
+
+@app.get("/api/censo-quebracho")
+def obtener_censo_quebracho():
+    """
+    Puntos del Segundo Inventario Nacional de Bosques Nativos (2021) con presencia de Schinopsis balansae
+    en el Chaco (tabla quebracho_final). Los individuos que comparten coordenadas (misma unidad de
+    muestreo) se agrupan en un único punto con la cantidad de individuos. Si es posible, se informa
+    el polígono de suelo del DSS donde cae cada punto. Los datos son estáticos y se guardan en memoria.
+    """
+    if _cache_censo["datos"] is not None:
+        return _cache_censo["datos"]
+
+    base = """
+        SELECT CASE WHEN ST_SRID(geometry) = 0 THEN ST_SetSRID(geometry, 4326) ELSE geometry END AS g
+        FROM "quebracho_final" WHERE geometry IS NOT NULL
+    """
+    con_poligono = f"""
+        WITH puntos AS ({base}),
+        agrupados AS (SELECT g, COUNT(*) AS individuos FROM puntos GROUP BY g)
+        SELECT ST_AsGeoJSON(ST_Transform(a.g, 4326), 6) AS geojson, a.individuos,
+               m.id AS poligono_id, m.clasificacion_final
+        FROM agrupados a
+        LEFT JOIN LATERAL (
+            SELECT id, clasificacion_final FROM mapa_aptitud_finalv2 m
+            WHERE ST_Intersects(m.geom, ST_Transform(a.g, ST_SRID(m.geom))) LIMIT 1
+        ) m ON TRUE;
+    """
+    sin_poligono = f"""
+        WITH puntos AS ({base})
+        SELECT ST_AsGeoJSON(ST_Transform(g, 4326), 6) AS geojson, COUNT(*) AS individuos,
+               NULL::int AS poligono_id, NULL::text AS clasificacion_final
+        FROM puntos GROUP BY g;
+    """
+    filas = None
+    for consulta in (con_poligono, sin_poligono):
+        try:
+            with engine.connect() as connection:
+                filas = connection.execute(text(consulta)).mappings().all()
+            break
+        except Exception as e:
+            print(f"Consulta del censo falló, se intenta una variante más simple: {e}")
+    if filas is None:
+        raise HTTPException(status_code=500, detail="No se pudo leer la tabla del censo forestal (quebracho_final).")
+
+    import json as _json
+    features = [{
+        "type": "Feature",
+        "geometry": _json.loads(f["geojson"]),
+        "properties": {
+            "individuos": int(f["individuos"]),
+            "poligono_id": f["poligono_id"],
+            "clasificacion_final": f["clasificacion_final"],
+        },
+    } for f in filas]
+    _cache_censo["datos"] = {
+        "type": "FeatureCollection",
+        "features": features,
+        "total_individuos": sum(x["properties"]["individuos"] for x in features),
+        "fuente": "Segundo Inventario Nacional de Bosques Nativos de la República Argentina (2021)",
+    }
+    return _cache_censo["datos"]
 
 if __name__ == "__main__":
     import uvicorn

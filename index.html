@@ -117,6 +117,11 @@
         <div class="legend-item"><div class="legend-color" style="background: #ef4444;"></div> Prioridad restauración (Zona Roja)</div>
         <div class="legend-item"><div class="legend-color" style="background: #6b7280;"></div> No apto (Uso de suelo excluido)</div>
         <div class="legend-item"><div class="legend-color" style="background: #1e293b;"></div> No apto biofísicamente</div>
+        <label class="legend-capa" title="Muestra dónde se registraron ejemplares de quebracho colorado">
+            <input type="checkbox" id="toggle-censo" />
+            <span class="legend-punto"></span> Quebrachos censados (Inventario 2021)
+        </label>
+        <p id="censo-estado" class="legend-estado hidden"></p>
     </div>
 
     <!-- Modal de reprocesamiento del modelo (solo administrador) -->
@@ -205,6 +210,7 @@
                     <a href="#guia-que-es">¿Qué es SITCHA?</a>
                     <a href="#guia-mapa">Explorar el mapa</a>
                     <a href="#guia-categorias">Categorías del mapa</a>
+                    <a href="#guia-censo">Quebrachos censados</a>
                     <a href="#guia-buscar">Buscar por coordenadas</a>
                     <a href="#guia-panel">Panel de diagnóstico</a>
                     <a href="#guia-composicion">Composición del polígono</a>
@@ -225,7 +231,7 @@
                         <ul>
                             <li><b>Desplazarse:</b> hacé clic y arrastrá el mapa. Para acercarte o alejarte usá la rueda del mouse o los botones <b>+</b> y <b>−</b> de la esquina inferior derecha.</li>
                             <li><b>Ver un polígono:</b> al pasar el cursor, el polígono se resalta; al hacer clic, queda marcado con borde oscuro y su diagnóstico aparece en el panel derecho.</li>
-                            <li><b>Leyenda:</b> el recuadro inferior izquierdo indica el significado de cada color.</li>
+                            <li><b>Leyenda:</b> el recuadro inferior izquierdo indica el significado de cada color y permite mostrar u ocultar la capa de quebrachos censados.</li>
                         </ul>
                     </section>
 
@@ -238,6 +244,17 @@
                             <li><span style="background:#6b7280"></span><div><b>No apto (uso excluido):</b> el suelo y el clima serían aptos, pero la cobertura actual (MapBiomas) es incompatible: áreas urbanas, cuerpos de agua o usos agropecuarios, entre otras.</div></li>
                             <li><span style="background:#1e293b"></span><div><b>No apto:</b> las condiciones de suelo, lluvia y vegetación no alcanzan el mínimo requerido por la especie.</div></li>
                         </ul>
+                    </section>
+
+                    <section id="guia-censo">
+                        <h4>Quebrachos censados</h4>
+                        <p>Activando la casilla <b>«Quebrachos censados (Inventario 2021)»</b> en el recuadro de referencias, el mapa muestra con puntos marrones los sitios donde el Segundo Inventario Nacional de Bosques Nativos (2021) registró ejemplares de <i>Schinopsis balansae</i>. Volviendo a hacer clic en la casilla, la capa se oculta.</p>
+                        <ul>
+                            <li>Cada punto corresponde a una <b>unidad de muestreo</b> del inventario: un sitio relevado en el que pueden haberse registrado varios árboles. El tamaño del punto aumenta con la cantidad de individuos.</li>
+                            <li>Al hacer clic en un punto se informa cuántos individuos se registraron y en qué polígono de suelo se encuentra, con un acceso directo a su diagnóstico.</li>
+                            <li>Es útil para planificar <b>planes de manejo o enriquecimiento</b>: indica dónde ya existen árboles de quebracho, que pueden funcionar como fuente de semillas o como referencia de sitios donde la especie prospera.</li>
+                        </ul>
+                        <p class="guia-nota">El inventario es un muestreo: la ausencia de puntos en una zona no significa que allí no haya quebrachos. Los datos reflejan el relevamiento de 2021.</p>
                     </section>
 
                     <section id="guia-buscar">
@@ -294,7 +311,7 @@
 
                     <section id="guia-admin">
                         <h4>Perfil administrador</h4>
-                        <p>El acceso institucional, con el botón «Iniciar sesión», está reservado para la administración del sistema. Además de todo lo anterior, el administrador puede consultar el panel de auditoría, editar los puntajes de la matriz edáfica y reprocesar el modelo. Para consultar el mapa no hace falta iniciar sesión.</p>
+                        <p>El acceso institucional, con el botón «Iniciar sesión», está reservado para la administración del sistema. Además de todo lo anterior, el administrador puede consultar el panel de auditoría (los polígonos más consultados en el día, la última semana, el último mes o todo el período), editar los puntajes de la matriz edáfica y reprocesar el modelo. Para consultar el mapa no hace falta iniciar sesión.</p>
                     </section>
                 </div>
             </div>

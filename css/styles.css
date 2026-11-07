@@ -415,3 +415,35 @@ body { margin: 0; padding: 0; background: #f4f6f8; }
 .param-tabla td.sin-uso { color: #b45309; font-weight: 700; }
 .param-aviso { margin: 0; padding: 8px 12px; background: #fff7ed; border-bottom: 1px solid #fed7aa; font-size: 0.78rem; color: #7c2d12; display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .param-aviso b { width: 100%; }
+
+
+/* ==========================================
+   Capa de quebrachos censados
+   ========================================== */
+.legend-capa { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0; cursor: pointer; font-weight: 600; color: #1e293b; }
+.legend-capa input { margin: 0; cursor: pointer; }
+.legend-punto { width: 12px; height: 12px; border-radius: 50%; background: #7c2d12; border: 2px solid #fff; box-shadow: 0 0 0 1px #7c2d12; flex-shrink: 0; }
+.legend-estado { margin: 4px 0 0; font-size: 11px; color: #64748b; }
+.censo-popup { font-size: 12px; line-height: 1.45; min-width: 190px; }
+.censo-popup b.t { display: block; font-size: 13px; color: #7c2d12; margin-bottom: 2px; }
+.censo-popup .fuente { color: #64748b; font-size: 10.5px; margin-top: 4px; display: block; }
+.censo-popup button { margin-top: 6px; background: #2563eb; color: #fff; border: none; border-radius: 6px; padding: 4px 10px; font-size: 11.5px; cursor: pointer; }
+
+/* ==========================================
+   Panel de auditoría
+   ========================================== */
+.auditoria-modal { position: fixed; top: 50px; left: 50%; transform: translateX(-50%); background: #fff; padding: 20px 22px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); z-index: 2500; width: 92%; max-width: 680px; max-height: 82vh; overflow-y: auto; }
+.auditoria-header { display: flex; justify-content: space-between; align-items: center; }
+.auditoria-header h2 { margin: 0; font-size: 1.15rem; color: #0f172a; }
+.auditoria-sub { font-size: 0.82rem; color: #64748b; margin: 4px 0 12px; }
+.auditoria-filtros { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.auditoria-filtro { border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; border-radius: 20px; padding: 5px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+.auditoria-filtro.activo { background: #1e293b; border-color: #1e293b; color: #fff; }
+.auditoria-total { font-size: 0.82rem; color: #334155; margin: 0 0 8px; }
+.auditoria-vacio { font-size: 0.85rem; color: #64748b; padding: 12px 0; }
+.auditoria-tabla { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.auditoria-tabla th { text-align: left; background: #f1f5f9; padding: 7px 8px; color: #334155; font-weight: 600; }
+.auditoria-tabla td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; color: #334155; }
+.auditoria-barra { display: flex; align-items: center; gap: 6px; min-width: 120px; }
+.auditoria-barra span { height: 8px; background: #2563eb; border-radius: 4px; min-width: 4px; }
+.auditoria-ver { padding: 4px 10px !important; font-size: 0.75rem !important; }

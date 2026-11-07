@@ -558,108 +558,108 @@ function descargarReportePDF(poligonoId) {
 // FUNCIONES EXCLUSIVAS DEL ADMINISTRADOR
 // ==========================================
 
+const PERIODOS_AUDITORIA = {
+    dia:    { etiqueta: "Hoy",            desde: () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; } },
+    semana: { etiqueta: "Últimos 7 días",  desde: () => new Date(Date.now() - 7 * 864e5) },
+    mes:    { etiqueta: "Últimos 30 días", desde: () => new Date(Date.now() - 30 * 864e5) },
+    todo:   { etiqueta: "Todo el período", desde: () => null },
+};
+let periodoAuditoria = "semana";
+
 async function abrirPanelAuditoria() {
     let dashboardModal = document.getElementById("dashboard-modal");
-    
-    // Si no existe el modal en el HTML, lo creamos dinámicamente
+
+    // El modal se crea dinámicamente la primera vez
     if (!dashboardModal) {
         dashboardModal = document.createElement("div");
         dashboardModal.id = "dashboard-modal";
-        dashboardModal.style.cssText = "position:fixed; top:50px; left:50%; transform:translateX(-50%); background:white; padding:20px; border-radius:8px; box-shadow:0 4px 15px rgba(0,0,0,0.2); z-index:9999; width:80%; max-width:600px; max-height:80vh; overflow-y:auto;";
-        
+        dashboardModal.className = "auditoria-modal";
         dashboardModal.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #ccc; padding-bottom:10px; margin-bottom:15px;">
-                <h2 style="margin:0;">Panel de Auditoría y Métricas</h2>
-                <button id="btn-close-dashboard" style="background:red; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:3px;">Cerrar</button>
+            <div class="auditoria-header">
+                <h2>📊 Panel de auditoría</h2>
+                <button id="btn-close-dashboard" class="pipeline-close" type="button" aria-label="Cerrar">✕</button>
             </div>
-            <div id="dashboard-content">Cargando métricas desde Supabase...</div>
+            <p class="auditoria-sub">Polígonos más consultados por los usuarios del sistema.</p>
+            <div class="auditoria-filtros" role="group" aria-label="Período">
+                ${Object.entries(PERIODOS_AUDITORIA).map(([clave, p]) =>
+                    `<button type="button" class="auditoria-filtro" data-periodo="${clave}">${p.etiqueta}</button>`).join("")}
+            </div>
+            <div id="dashboard-content"></div>
         `;
         document.body.appendChild(dashboardModal);
-        
-        document.getElementById("btn-close-dashboard").addEventListener("click", () => {
-            dashboardModal.classList.add("hidden");
-        });
+        document.getElementById("btn-close-dashboard").addEventListener("click", () => dashboardModal.classList.add("hidden"));
+        dashboardModal.querySelectorAll(".auditoria-filtro").forEach(b => b.addEventListener("click", () => {
+            periodoAuditoria = b.dataset.periodo;
+            cargarAuditoria();
+        }));
     }
-    
     dashboardModal.classList.remove("hidden");
+    cargarAuditoria();
+}
+
+async function cargarAuditoria() {
     const contentDiv = document.getElementById("dashboard-content");
-    contentDiv.innerHTML = "Cargando métricas desde Supabase...";
+    document.querySelectorAll(".auditoria-filtro").forEach(b => b.classList.toggle("activo", b.dataset.periodo === periodoAuditoria));
+    contentDiv.innerHTML = '<p class="auditoria-vacio">Cargando métricas…</p>';
 
     try {
-        // Consultar a Supabase para agrupar y contar polígonos consultados
-        // Requiere que la tabla 'registros_acceso' tenga datos y permisos de lectura para el admin
-        const { data, error } = await supabaseClient
+        // Requiere que el administrador tenga permiso de lectura sobre 'registros_acceso' (RLS)
+        let consulta = supabaseClient
             .from('registros_acceso')
-            .select('poligono_consultado')
+            .select('poligono_consultado, created_at')
             .not('poligono_consultado', 'is', null);
+        const desde = PERIODOS_AUDITORIA[periodoAuditoria].desde();
+        if (desde) consulta = consulta.gte('created_at', desde.toISOString());
 
+        const { data, error } = await consulta;
         if (error) throw error;
 
         if (!data || data.length === 0) {
-            contentDiv.innerHTML = "<p>No hay consultas registradas aún.</p>";
+            contentDiv.innerHTML = `<p class="auditoria-vacio">No hay consultas registradas en este período (${PERIODOS_AUDITORIA[periodoAuditoria].etiqueta.toLowerCase()}).</p>`;
             return;
         }
 
-        // Conteo de frecuencias (Mapa de Calor Lógico)
-        const conteo = {};
+        // Conteo de consultas y fecha de la última consulta por polígono
+        const resumen = {};
         data.forEach(row => {
-            conteo[row.poligono_consultado] = (conteo[row.poligono_consultado] || 0) + 1;
+            const id = row.poligono_consultado;
+            const r = resumen[id] || (resumen[id] = { id: Number(id), visitas: 0, ultima: null });
+            r.visitas++;
+            if (row.created_at && (!r.ultima || row.created_at > r.ultima)) r.ultima = row.created_at;
         });
+        const ranking = Object.values(resumen).sort((a, b) => b.visitas - a.visitas);
+        const fmt = iso => iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "—";
 
-        // Ordenar de mayor a menor
-        const poligonosPopulares = Object.keys(conteo)
-            .map(id => ({ id: parseInt(id), visitas: conteo[id] }))
-            .sort((a, b) => b.visitas - a.visitas);
-
-        // Generar tabla HTML
-        let tablaHTML = `
-            <p>Se muestran los polígonos de suelo con mayor interés (búsquedas por visitantes o usuarios de campo).</p>
-            <table style="width:100%; border-collapse: collapse; margin-top:10px;">
-                <thead>
-                    <tr style="background:#f1f5f9; text-align:left;">
-                        <th style="padding:8px; border: 1px solid #cbd5e1;">ID Polígono</th>
-                        <th style="padding:8px; border: 1px solid #cbd5e1;">Total de Consultas</th>
-                        <th style="padding:8px; border: 1px solid #cbd5e1;">Acción</th>
-                    </tr>
-                </thead>
+        contentDiv.innerHTML = `
+            <p class="auditoria-total"><b>${data.length}</b> consultas sobre <b>${ranking.length}</b> polígonos · ${PERIODOS_AUDITORIA[periodoAuditoria].etiqueta}</p>
+            <table class="auditoria-tabla">
+                <thead><tr><th>#</th><th>Polígono</th><th>Consultas</th><th>Última consulta</th><th></th></tr></thead>
                 <tbody>
-        `;
-
-        poligonosPopulares.forEach(p => {
-            tablaHTML += `
-                <tr>
-                    <td style="padding:8px; border: 1px solid #cbd5e1;">#${p.id}</td>
-                    <td style="padding:8px; border: 1px solid #cbd5e1;">${p.visitas}</td>
-                    <td style="padding:8px; border: 1px solid #cbd5e1;">
-                        <button onclick="buscarDesdeDashboard(${p.id})" style="padding:4px 8px; cursor:pointer;">Ver en Mapa</button>
-                    </td>
-                </tr>
-            `;
-        });
-
-        tablaHTML += `</tbody></table>`;
-        contentDiv.innerHTML = tablaHTML;
-
+                    ${ranking.map((p, i) => `
+                        <tr>
+                            <td>${i + 1}</td>
+                            <td>#${p.id}</td>
+                            <td><div class="auditoria-barra"><span style="width:${(p.visitas / ranking[0].visitas * 100).toFixed(0)}%"></span><b>${p.visitas}</b></div></td>
+                            <td>${fmt(p.ultima)}</td>
+                            <td><button type="button" class="btn-outline auditoria-ver" onclick="buscarDesdeDashboard(${p.id})">Ver en mapa</button></td>
+                        </tr>`).join("")}
+                </tbody>
+            </table>`;
     } catch (err) {
-        console.error("Error cargando dashboard:", err);
-        contentDiv.innerHTML = `<p style="color:red;">Error al cargar datos: ${err.message}</p>`;
+        console.error("Error cargando auditoría:", err);
+        contentDiv.innerHTML = `<p style="color:#b91c1c;">Error al cargar datos: ${escHTML(err.message)}</p>`;
     }
 }
 
-// Función auxiliar para que el administrador salte del dashboard al mapa
-window.buscarDesdeDashboard = function(idPoligono) {
+// Cierra el panel, centra el mapa en el polígono y abre su diagnóstico (sin contarlo como consulta)
+window.buscarDesdeDashboard = function (idPoligono) {
     const dashboardModal = document.getElementById("dashboard-modal");
-    if (dashboardModal) dashboardModal.classList.add("hidden"); // Cierra modal
-    
-    // Inyecta valor en el input de búsqueda existente y dispara el click
-    const inputSearch = document.getElementById('search-polygon-id');
-    const btnSearch = document.getElementById('btn-search');
-    
-    if (inputSearch && btnSearch) {
-        inputSearch.value = idPoligono;
-        btnSearch.click();
-    }
-}
+    if (dashboardModal) dashboardModal.classList.add("hidden");
+    const capa = capasPorId[idPoligono];
+    if (!capa) { alert(`El polígono #${idPoligono} no está en el mapa actual.`); return; }
+    map.flyToBounds(capa.getBounds(), { maxZoom: 11, duration: 1.2 });
+    seleccionarPoligono(capa.feature, capa, false);
+};
 
 // ==========================================
 // REPROCESAMIENTO DEL MODELO (PIPELINE main.py)
@@ -1230,3 +1230,62 @@ guiaUI.contenido.addEventListener("scroll", () => {
 document.getElementById("btn-guia").addEventListener("click", () => abrirGuia());
 document.getElementById("guia-cerrar").addEventListener("click", () => guiaUI.modal.classList.add("hidden"));
 guiaUI.modal.addEventListener("click", e => { if (e.target === guiaUI.modal) guiaUI.modal.classList.add("hidden"); });
+
+
+// ==========================================
+// CAPA DE QUEBRACHOS CENSADOS (todos los perfiles)
+// ==========================================
+map.createPane('censo');
+map.getPane('censo').style.zIndex = 450;   // por encima de los polígonos
+const rendererCenso = L.svg({ pane: 'censo' });
+let capaCenso = null;
+
+async function mostrarCapaCenso(visible) {
+    const estado = document.getElementById("censo-estado");
+    if (!visible) {
+        if (capaCenso) map.removeLayer(capaCenso);
+        estado.classList.add("hidden");
+        return;
+    }
+    if (!capaCenso) {
+        estado.textContent = "Cargando puntos del censo…";
+        estado.classList.remove("hidden");
+        try {
+            const res = await fetch(`${API_BASE}/api/censo-quebracho`);
+            if (!res.ok) throw new Error(`Error ${res.status}`);
+            const datos = await res.json();
+            capaCenso = L.geoJSON(datos, {
+                pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+                    pane: 'censo',
+                    renderer: rendererCenso,
+                    radius: Math.min(4 + Math.sqrt(feature.properties.individuos) * 1.6, 12),
+                    color: '#ffffff', weight: 1.5,
+                    fillColor: '#7c2d12', fillOpacity: 0.9,
+                }),
+                onEachFeature: (feature, layer) => {
+                    const p = feature.properties;
+                    const n = p.individuos;
+                    layer.bindPopup(`<div class="censo-popup">
+                        <b class="t">🌳 Quebracho colorado</b>
+                        ${n} ${n === 1 ? "individuo registrado" : "individuos registrados"} en esta unidad de muestreo.
+                        ${p.poligono_id ? `<br>Polígono de suelo <b>#${p.poligono_id}</b>: ${escHTML(p.clasificacion_final || "")}
+                            <br><button type="button" onclick="buscarDesdeDashboard(${p.poligono_id})">Ver diagnóstico del polígono</button>` : ""}
+                        <span class="fuente">Fuente: Segundo Inventario Nacional de Bosques Nativos (2021)</span>
+                    </div>`);
+                },
+            });
+            estado.textContent = `${datos.features.length} sitios de muestreo · ${datos.total_individuos} individuos`;
+        } catch (err) {
+            console.error("Error cargando el censo:", err);
+            estado.textContent = "No se pudo cargar la capa del censo.";
+            document.getElementById("toggle-censo").checked = false;
+            return;
+        }
+    }
+    if (document.getElementById("toggle-censo").checked) {
+        capaCenso.addTo(map);
+        estado.classList.remove("hidden");
+    }
+}
+
+document.getElementById("toggle-censo").addEventListener("change", e => mostrarCapaCenso(e.target.checked));
