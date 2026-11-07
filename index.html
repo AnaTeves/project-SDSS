@@ -166,6 +166,32 @@
         </div>
     </div>
 
+    <!-- Modal de parámetros edáficos (solo administrador) -->
+    <div id="param-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="param-title">
+        <div class="modal-card param-card">
+            <div class="pipeline-header">
+                <h3 id="param-title">🧪 Matriz de parámetros edáficos</h3>
+                <button id="param-cerrar-x" class="pipeline-close" type="button" aria-label="Cerrar">✕</button>
+            </div>
+            <p class="param-ayuda">Solo se puede modificar la columna <b>Puntaje (0-1)</b>. Los cambios se aplican al modelo la próxima vez que se reprocese.</p>
+            <div class="param-barra">
+                <div id="param-tabs" class="param-tabs"></div>
+                <input id="param-filtro" type="search" placeholder="Buscar atributo, variable o referencia…" />
+            </div>
+            <div id="param-body" class="param-body"></div>
+            <p id="param-mensaje" class="param-mensaje hidden"></p>
+            <div class="param-pie">
+                <span id="param-estado" class="param-estado">Sin cambios</span>
+                <div class="pipeline-actions" style="margin-top:0">
+                    <button id="param-descargar" class="btn-outline" type="button">⬇ Descargar Excel</button>
+                    <button id="param-cerrar" class="btn-outline" type="button">Cerrar</button>
+                    <button id="param-reprocesar" class="btn-outline hidden" type="button">🔄 Reprocesar modelo ahora</button>
+                    <button id="param-guardar" class="btn-submit" type="button" disabled>Guardar cambios</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Script Principal -->
     <script src="js/app.js" defer></script>
 </body>

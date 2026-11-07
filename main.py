@@ -209,7 +209,8 @@ def ejecutar_pipeline(reportar=None):
 
     # ETAPA 4: Instancia el pipeline integrador y calcula la aptitud final del territorio.
     reportar(4, "Computando modelo matemático de aptitud y categorización territorial")
-    pipeline = ReforestationPipeline()
+    pipeline = ReforestationPipeline(engine=db.engine)
+    reportar(4, f"Puntajes edáficos leídos desde {pipeline.motor_suelo.fuente_parametros}")
     resultado_final = pipeline.calcular_aptitud_y_reforestacion(suelos_enriquecidos)
 
     # ETAPA 5: Exporta el GeoDataFrame final consolidado de vuelta a PostGIS.
@@ -222,4 +223,4 @@ def ejecutar_pipeline(reportar=None):
     return {"poligonos": int(len(resultado_final)), "duracion_seg": round(tiempo_total, 2)}
 
 if __name__ == '__main__':
-    ejecutar_pipeline()
+    ejecutar_pipeline()

@@ -1,12 +1,14 @@
 import numpy as np
 import pandas as pd
 
+from src.parametros_edaficos import mapas_desde_bd
+
 """
 Clase algorítmica encargada de la lógica matemática del modelo edáfico.
 Implementa una evaluación multicriterio (MCDA) basada en el Proceso de Jerarquía Analítica (AHP) para ponderar y clasificar la aptitud de las variables del suelo.
 """
 class MCDAEngine:
-    def __init__(self, excel_path='assets/edaphic-model-parameters-v2.xlsx'):
+    def __init__(self, excel_path='assets/edaphic-model-parameters-v2.xlsx', engine=None):
         """
         Establece los pesos oficiales validados metodológicamente para las variables críticas del suelo.
         """
@@ -17,7 +19,15 @@ class MCDAEngine:
             'alcalin_s1': 0.15
         }
         
-        self.mapas = self._cargar_parametros_excel(excel_path)
+        # Fuente de los puntajes: la tabla `parametros_edaficos` (editable por el administrador desde la
+        # web) si existe; si todavía no fue creada, la matriz original en Excel.
+        mapas_bd = mapas_desde_bd(engine, list(self.pesos_suelo.keys()))
+        if mapas_bd is not None:
+            self.mapas = mapas_bd
+            self.fuente_parametros = 'base de datos (parametros_edaficos)'
+        else:
+            self.mapas = self._cargar_parametros_excel(excel_path)
+            self.fuente_parametros = f'Excel ({excel_path})'
 
     """
     Lee una matriz de puntuación externa desde un archivo Excel.
@@ -72,4 +82,4 @@ class MCDAEngine:
                 puntaje_acumulado += valores_mapeados * peso
 
         # Aplica una función de corte (`.clip(0, 1)`) para asegurar que el índice final de aptitud edáfica resultante esté estrictamente acotado en una escala continua entre 0.0 y 1.0.
-        return puntaje_acumulado.clip(0, 1)
+        return puntaje_acumulado.clip(0, 1)

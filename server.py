@@ -18,6 +18,9 @@ import time
 import traceback
 from datetime import datetime, timezone
 from main import ejecutar_pipeline, ETAPAS_PIPELINE
+from pydantic import BaseModel, Field
+from typing import List
+from src import parametros_edaficos
 from supabase import create_client, Client
 
 # Cargar variables de entorno desde el archivo .env
@@ -234,6 +237,56 @@ async def consultar_estado_etl(admin_data=Depends(verificar_admin)):
     estado["en_progreso"] = etl_en_progreso
     estado["total_etapas"] = len(ETAPAS_PIPELINE)
     return estado
+
+# ==========================================
+# PARÁMETROS EDÁFICOS (solo administrador)
+# ==========================================
+class CambioPuntaje(BaseModel):
+    id: int
+    puntaje: float = Field(..., ge=0.0, le=1.0)
+
+class CambiosPuntajes(BaseModel):
+    cambios: List[CambioPuntaje]
+
+@app.get("/api/admin/parametros-edaficos")
+def listar_parametros_edaficos(admin_data=Depends(verificar_admin)):
+    """Matriz completa: hoja de parámetros (puntaje editable) y hojas complementarias del Excel (solo lectura)."""
+    try:
+        return {
+            **parametros_edaficos.leer_encabezado_excel(),
+            "parametros": parametros_edaficos.obtener_parametros(engine),
+            "hojas_complementarias": parametros_edaficos.leer_hojas_complementarias(),
+            "variables_del_modelo": ["text_sups1", "sgrup_sue1", "drenaje_s1", "alcalin_s1"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo leer la matriz de parámetros: {e}")
+
+@app.put("/api/admin/parametros-edaficos")
+def guardar_parametros_edaficos(datos: CambiosPuntajes, admin_data=Depends(verificar_admin)):
+    """Actualiza únicamente la columna de puntaje. No se permite mientras el modelo se está reprocesando."""
+    if etl_en_progreso:
+        raise HTTPException(status_code=409, detail="El modelo se está reprocesando. Guarda los cambios cuando termine.")
+    try:
+        n = parametros_edaficos.actualizar_puntajes(
+            engine, [c.model_dump() for c in datos.cambios], getattr(admin_data, "email", "admin"))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudieron guardar los puntajes: {e}")
+    return {"mensaje": f"{n} puntaje(s) guardado(s). Reprocesa el modelo para aplicarlos.", "actualizados": n}
+
+@app.get("/api/admin/parametros-edaficos/excel")
+def descargar_parametros_excel(admin_data=Depends(verificar_admin)):
+    """Excel original con los puntajes vigentes en la base."""
+    try:
+        contenido = parametros_edaficos.generar_excel(engine)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo generar el Excel: {e}")
+    return Response(
+        content=contenido,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="edaphic-model-parameters-actualizado.xlsx"'},
+    )
 
 """
 Endpoint encargado de compilar los 3 paneles analíticos de Grafana para un polígono específico 

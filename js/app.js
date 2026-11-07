@@ -454,6 +454,9 @@ function actualizarInterfazUsuario(user) {
             <button id="btn-dashboard" style="background:#1e293b; color:#fff; border:none; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; height:34px;">
                 📊 Panel
             </button>
+            <button id="btn-parametros" style="background:#0f766e; color:#fff; border:none; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; height:34px;">
+                🧪 Parámetros edáficos
+            </button>
             <button id="btn-run-pipeline" style="background:#2563eb; color:#fff; border:none; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; height:34px;">
                 🔄 Reprocesar modelo
             </button>
@@ -466,6 +469,7 @@ function actualizarInterfazUsuario(user) {
         // Listeners para los botones de administrador
         document.getElementById("btn-dashboard").addEventListener("click", abrirPanelAuditoria);
         document.getElementById("btn-run-pipeline").addEventListener("click", ejecutarPipelineRemoto);
+        document.getElementById("btn-parametros").addEventListener("click", abrirParametrosEdaficos);
     }
 
     if (user) {
@@ -953,3 +957,218 @@ pipelineUI.btnCancel.addEventListener("click", ocultarModalPipeline);
 pipelineUI.btnClose.addEventListener("click", ocultarModalPipeline);
 pipelineUI.btnHide.addEventListener("click", ocultarModalPipeline);
 pipelineUI.btnDone.addEventListener("click", ocultarModalPipeline);
+
+
+// ==========================================
+// PARÁMETROS EDÁFICOS (solo administrador)
+// Muestra el Excel de parámetros completo; solo la columna de puntaje es editable.
+// ==========================================
+const paramUI = {
+    modal:   document.getElementById("param-modal"),
+    tabs:    document.getElementById("param-tabs"),
+    body:    document.getElementById("param-body"),
+    filtro:  document.getElementById("param-filtro"),
+    estado:  document.getElementById("param-estado"),
+    mensaje: document.getElementById("param-mensaje"),
+    btnGuardar:    document.getElementById("param-guardar"),
+    btnDescargar:  document.getElementById("param-descargar"),
+    btnCerrar:     document.getElementById("param-cerrar"),
+    btnCerrarX:    document.getElementById("param-cerrar-x"),
+    btnReprocesar: document.getElementById("param-reprocesar"),
+};
+let paramDatos = null;          // respuesta del backend
+let paramCambios = new Map();   // id -> puntaje nuevo
+let paramHoja = "parametros";   // pestaña activa
+
+function escHTML(v) {
+    return String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function fetchAdmin(ruta, opciones = {}) {
+    const token = await obtenerTokenAdmin();
+    const res = await fetch(`${API_BASE}${ruta}`, {
+        ...opciones,
+        headers: { ...(opciones.headers || {}), 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `Error ${res.status}`);
+    }
+    return res;
+}
+
+function mostrarMensajeParam(texto, tipo = "info") {
+    paramUI.mensaje.textContent = texto;
+    paramUI.mensaje.className = `param-mensaje ${tipo}`;
+    paramUI.mensaje.classList.toggle("hidden", !texto);
+}
+
+async function abrirParametrosEdaficos() {
+    paramUI.modal.classList.remove("hidden");
+    paramUI.btnReprocesar.classList.add("hidden");
+    mostrarMensajeParam("");
+    if (paramCambios.size && paramDatos) { renderParametros(); return; }   // conserva cambios sin guardar
+    paramUI.body.innerHTML = '<p class="param-cargando">Cargando matriz de parámetros…</p>';
+    try {
+        const res = await fetchAdmin("/api/admin/parametros-edaficos");
+        paramDatos = await res.json();
+        paramCambios = new Map();
+        paramHoja = "parametros";
+        renderTabs();
+        renderParametros();
+    } catch (err) {
+        paramUI.body.innerHTML = "";
+        mostrarMensajeParam("❌ " + err.message, "error");
+    }
+}
+
+function renderTabs() {
+    const hojas = [{ clave: "parametros", nombre: "Parametros del modelo" },
+        ...(paramDatos.hojas_complementarias || []).map((h, i) => ({ clave: "h" + i, nombre: h.nombre }))];
+    paramUI.tabs.innerHTML = hojas.map(h =>
+        `<button type="button" class="param-tab ${h.clave === paramHoja ? "activa" : ""}" data-hoja="${h.clave}">${escHTML(h.nombre)}${h.clave === "parametros" ? ' <span class="param-tab-nota">editable</span>' : ""}</button>`
+    ).join("");
+    paramUI.tabs.querySelectorAll(".param-tab").forEach(b => b.addEventListener("click", () => {
+        paramHoja = b.dataset.hoja;
+        renderTabs();
+        renderParametros();
+    }));
+    paramUI.filtro.classList.toggle("hidden", paramHoja !== "parametros");
+}
+
+function renderParametros() {
+    if (!paramDatos) return;
+    if (paramHoja !== "parametros") {
+        const hoja = paramDatos.hojas_complementarias[Number(paramHoja.slice(1))];
+        paramUI.body.innerHTML = `<table class="param-tabla solo-lectura"><tbody>${
+            hoja.filas.map((f, i) => {
+                const llenas = f.filter(c => c !== "");
+                const ancho = Math.max(...hoja.filas.map(x => x.length));
+                if (llenas.length === 1 && f[0] !== "")   // fila de título o descripción: ocupa todo el ancho
+                    return `<tr class="${i === 0 ? "param-titulo-fila" : ""}"><td colspan="${ancho}">${escHTML(f[0])}</td></tr>`;
+                return `<tr>${f.map(c => `<td>${escHTML(c)}</td>`).join("")}</tr>`;
+            }).join("")
+        }</tbody></table>`;
+        actualizarEstadoParam();
+        return;
+    }
+    const q = (paramUI.filtro.value || "").trim().toLowerCase();
+    const usadas = new Set(paramDatos.variables_del_modelo || []);
+    let html = `<div class="param-cabecera"><b>${escHTML(paramDatos.titulo)}</b><span>${escHTML(paramDatos.descripcion)}</span></div>
+        <table class="param-tabla"><thead><tr>
+            <th>Variable</th><th>Atributo del suelo</th><th class="col-puntaje">Puntaje (0-1)</th>
+            <th>Criterio biológico y justificación científica</th><th>Referencia clave</th>
+        </tr></thead><tbody>`;
+    let seccion = null;
+    for (const p of paramDatos.parametros) {
+        const texto = `${p.variable} ${p.atributo} ${p.criterio || ""} ${p.referencia || ""}`.toLowerCase();
+        if (q && !texto.includes(q)) continue;
+        if (p.seccion !== seccion) {
+            seccion = p.seccion;
+            const noUsada = !usadas.has(p.variable);
+            html += `<tr class="param-seccion"><td colspan="5">${escHTML(seccion)}${noUsada ? ' <span class="param-no-usada">no se utiliza en la versión actual del modelo</span>' : ""}</td></tr>`;
+        }
+        const valor = paramCambios.has(p.id) ? paramCambios.get(p.id) : p.puntaje;
+        const modificado = paramCambios.has(p.id);
+        const editadoAntes = p.puntaje !== p.puntaje_original;
+        html += `<tr class="${modificado ? "param-modificado" : ""}">
+            <td class="param-var">${escHTML(p.variable)}</td>
+            <td>${escHTML(p.atributo)}</td>
+            <td class="col-puntaje">
+                <input type="number" min="0" max="1" step="0.05" value="${valor}" data-id="${p.id}" data-actual="${p.puntaje}"
+                       title="Valor original del Excel: ${p.puntaje_original}${p.actualizado_por ? ` · Editado por ${escHTML(p.actualizado_por)}` : ""}">
+                ${editadoAntes ? `<span class="param-orig" title="Valor original del Excel">orig. ${p.puntaje_original}</span>` : ""}
+            </td>
+            <td class="param-texto">${escHTML(p.criterio)}</td>
+            <td class="param-ref">${escHTML(p.referencia)}</td>
+        </tr>`;
+    }
+    html += "</tbody></table>";
+    paramUI.body.innerHTML = html;
+    paramUI.body.querySelectorAll('input[type="number"]').forEach(inp => inp.addEventListener("input", onCambioPuntaje));
+    actualizarEstadoParam();
+}
+
+function onCambioPuntaje(e) {
+    const inp = e.target;
+    const id = Number(inp.dataset.id);
+    const actual = Number(inp.dataset.actual);
+    const v = inp.value === "" ? NaN : Number(inp.value);
+    const valido = !Number.isNaN(v) && v >= 0 && v <= 1;
+    inp.classList.toggle("invalido", !valido);
+    if (valido && Math.abs(v - actual) > 1e-9) paramCambios.set(id, v);
+    else if (valido) paramCambios.delete(id);
+    else paramCambios.set(id, NaN);
+    inp.closest("tr").classList.toggle("param-modificado", paramCambios.has(id));
+    actualizarEstadoParam();
+}
+
+function actualizarEstadoParam() {
+    const invalidos = [...paramCambios.values()].filter(v => Number.isNaN(v)).length;
+    const n = paramCambios.size;
+    paramUI.estado.textContent = invalidos
+        ? `${invalidos} valor(es) fuera de rango (0 a 1)`
+        : n ? `${n} cambio(s) sin guardar` : "Sin cambios";
+    paramUI.estado.classList.toggle("con-cambios", n > 0);
+    paramUI.btnGuardar.disabled = n === 0 || invalidos > 0;
+}
+
+async function guardarParametros() {
+    const cambios = [...paramCambios.entries()].map(([id, puntaje]) => ({ id, puntaje }));
+    if (!cambios.length) return;
+    paramUI.btnGuardar.disabled = true;
+    paramUI.btnGuardar.textContent = "Guardando…";
+    try {
+        const res = await fetchAdmin("/api/admin/parametros-edaficos", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cambios })
+        });
+        const data = await res.json();
+        // Refrescar desde el servidor para mostrar los valores efectivamente guardados
+        const res2 = await fetchAdmin("/api/admin/parametros-edaficos");
+        paramDatos = await res2.json();
+        paramCambios = new Map();
+        renderParametros();
+        mostrarMensajeParam("✅ " + data.mensaje, "ok");
+        paramUI.btnReprocesar.classList.remove("hidden");
+    } catch (err) {
+        mostrarMensajeParam("❌ " + err.message, "error");
+    } finally {
+        paramUI.btnGuardar.textContent = "Guardar cambios";
+        actualizarEstadoParam();
+    }
+}
+
+async function descargarExcelParametros() {
+    try {
+        const res = await fetchAdmin("/api/admin/parametros-edaficos/excel");
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "edaphic-model-parameters-actualizado.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        if (paramCambios.size) mostrarMensajeParam("El Excel descargado contiene los puntajes guardados; los cambios sin guardar no se incluyen.", "info");
+    } catch (err) {
+        mostrarMensajeParam("❌ " + err.message, "error");
+    }
+}
+
+function cerrarParametros() {
+    if (paramCambios.size && !confirm("Hay cambios sin guardar. ¿Cerrar de todos modos? (se conservarán hasta que recargues la página)")) return;
+    paramUI.modal.classList.add("hidden");
+}
+
+paramUI.filtro.addEventListener("input", renderParametros);
+paramUI.btnGuardar.addEventListener("click", guardarParametros);
+paramUI.btnDescargar.addEventListener("click", descargarExcelParametros);
+paramUI.btnCerrar.addEventListener("click", cerrarParametros);
+paramUI.btnCerrarX.addEventListener("click", cerrarParametros);
+paramUI.btnReprocesar.addEventListener("click", () => {
+    paramUI.modal.classList.add("hidden");
+    ejecutarPipelineRemoto();
+});

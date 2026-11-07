@@ -13,14 +13,14 @@ Clase controladora que actúa como el motor integrador y coordinador del sistema
 Ejecuta secuencialmente la Combinación Lineal Ponderada (MCDA), cruza las limitantes biofísicas con las restricciones legales y clasifica el territorio para la toma de decisiones ecológicas.
 """
 class ReforestationPipeline:
-    def __init__(self):
+    def __init__(self, engine=None):
         """
         Inicializa y pre-carga en memoria todos los motores analíticos de soporte
         para garantizar máxima eficiencia computacional O(N).
         Reduce la sobrecarga de procesamiento en conjuntos de datos masivos.
         """
         self.calculador_ahp = AHPCalculator()
-        self.motor_suelo = MCDAEngine()
+        self.motor_suelo = MCDAEngine(engine=engine)
         self.motor_raster = RasterNormalizer()
 
     def calcular_aptitud_y_reforestacion(self, df_enriquecido: pd.DataFrame, pesos_macro=None) -> pd.DataFrame:
@@ -108,4 +108,4 @@ class ReforestationPipeline:
         )
         
         print(f"Proceso MCDA finalizado. Polígonos evaluados: {len(df_resultado)}")
-        return df_resultado
+        return df_resultado
