@@ -8,13 +8,43 @@ SCOPES_GEE = ['https://www.googleapis.com/auth/earthengine']
 RAIZ_PROYECTO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _es_cuenta_de_servicio(ruta):
+    """True si el archivo es un JSON de cuenta de servicio de Google. Propaga PermissionError."""
+    try:
+        with open(ruta, encoding='utf-8-sig') as f:
+            info = json.load(f)
+        return isinstance(info, dict) and info.get("type") == "service_account" and "private_key" in info
+    except (json.JSONDecodeError, UnicodeDecodeError, IsADirectoryError):
+        return False
+
+
+def _diagnostico_secretos():
+    """Describe qué hay en /etc/secrets (solo nombres y permisos, nunca contenidos)."""
+    carpeta = "/etc/secrets"
+    if not os.path.exists(carpeta):
+        return f"La carpeta {carpeta} no existe (no hay Secret Files montados en este servicio)."
+    try:
+        nombres = os.listdir(carpeta)
+    except PermissionError:
+        return f"Sin permiso para listar {carpeta}."
+    if not nombres:
+        return f"La carpeta {carpeta} está vacía."
+    detalles = []
+    for n in nombres:
+        ruta = os.path.join(carpeta, n)
+        legible = "legible" if os.access(ruta, os.R_OK) else "SIN permiso de lectura"
+        detalles.append(f"'{n}' ({legible})")
+    return f"Archivos en {carpeta}: " + ", ".join(detalles)
+
+
 def cargar_credenciales_gee(key_file='config/credentials.json'):
     """
     Obtiene las credenciales de la cuenta de servicio de GEE probando, en orden:
-      1. Variable de entorno GEE_CREDENTIALS_JSON con el contenido completo del JSON (ideal para Render).
+      1. Variable de entorno GEE_CREDENTIALS_JSON con el contenido completo del JSON.
       2. Variable de entorno GEE_CREDENTIALS_PATH con la ruta a un archivo.
-      3. Secret File de Render en /etc/secrets/credentials.json.
+      3. Secret Files de Render: /etc/secrets/credentials.json y la raíz del repo.
       4. El archivo local `key_file` (relativo a la raíz del proyecto), como en desarrollo.
+      5. Cualquier .json de cuenta de servicio dentro de /etc/secrets (por si tiene otro nombre).
     """
     contenido = os.getenv("GEE_CREDENTIALS_JSON")
     if contenido:
@@ -24,19 +54,43 @@ def cargar_credenciales_gee(key_file='config/credentials.json'):
             raise ValueError(f"GEE_CREDENTIALS_JSON no contiene un JSON válido: {e}")
         return service_account.Credentials.from_service_account_info(info, scopes=SCOPES_GEE)
 
+    nombre = os.path.basename(key_file)
     candidatos = [
         os.getenv("GEE_CREDENTIALS_PATH"),
-        "/etc/secrets/credentials.json",
+        os.path.join("/etc/secrets", nombre),
+        os.path.join(RAIZ_PROYECTO, nombre),
+        os.path.join(os.getcwd(), nombre),
         key_file if os.path.isabs(key_file) else os.path.join(RAIZ_PROYECTO, key_file),
     ]
+    # Cualquier otro .json montado como Secret File
+    if os.path.isdir("/etc/secrets"):
+        try:
+            candidatos += sorted(
+                os.path.join("/etc/secrets", n) for n in os.listdir("/etc/secrets") if n.lower().endswith(".json")
+            )
+        except PermissionError:
+            pass
+
+    problemas = []
+    vistos = set()
     for ruta in candidatos:
-        if ruta and os.path.isfile(ruta):
-            return service_account.Credentials.from_service_account_file(ruta, scopes=SCOPES_GEE)
+        if not ruta or ruta in vistos or not os.path.isfile(ruta):
+            continue
+        vistos.add(ruta)
+        try:
+            if _es_cuenta_de_servicio(ruta):
+                print(f"Credenciales de GEE cargadas desde: {ruta}")
+                return service_account.Credentials.from_service_account_file(ruta, scopes=SCOPES_GEE)
+            problemas.append(f"'{ruta}' existe pero no es un JSON de cuenta de servicio válido")
+        except PermissionError:
+            problemas.append(f"'{ruta}' existe pero el proceso no tiene permiso de lectura")
 
     raise FileNotFoundError(
-        "No se encontraron las credenciales de Google Earth Engine. En el servidor, define la "
-        "variable de entorno GEE_CREDENTIALS_JSON con el contenido de config/credentials.json "
-        "o súbelo como Secret File llamado 'credentials.json'."
+        "No se encontraron credenciales válidas de Google Earth Engine. "
+        + (" | ".join(problemas) + ". " if problemas else "")
+        + _diagnostico_secretos()
+        + " Sube el JSON como Secret File llamado 'credentials.json' (y redespliega) "
+        "o define la variable de entorno GEE_CREDENTIALS_JSON."
     )
 
 """
