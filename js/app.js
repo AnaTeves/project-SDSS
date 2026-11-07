@@ -532,7 +532,7 @@ function descargarReportePDF(poligonoId) {
         return;
     }
     
-    const BACKEND_URL = "https://backend-sdss.onrender.com";
+    const BACKEND_URL = "https://sdss-backend-69r5.onrender.com";
     
     // Apuntamos al endpoint dinámico de FPDF2 que agregamos en server.py
     const urlEndpoint = `${BACKEND_URL}/api/v1/poligonos/${poligonoId}/reporte-pdf`;
