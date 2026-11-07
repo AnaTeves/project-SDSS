@@ -12,8 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from fpdf import FPDF
-import subprocess 
-from main import ejecutar_pipeline
+import subprocess
+import threading
+import time
+import traceback
+from datetime import datetime, timezone
+from main import ejecutar_pipeline, ETAPAS_PIPELINE
 from supabase import create_client, Client
 
 # Cargar variables de entorno desde el archivo .env
@@ -60,6 +64,42 @@ http_client = httpx.AsyncClient(timeout=20.0)
 
 etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
 
+# Estado detallado del pipeline que consulta el modal de progreso del frontend.
+# Nota: vive en memoria del proceso, por eso el servidor debe correr con 1 solo worker.
+_estado_lock = threading.Lock()
+estado_etl = {
+    "estado": "inactivo",          # inactivo | ejecutando | completado | error
+    "etapas": ETAPAS_PIPELINE,
+    "etapa_actual": None,          # índice de la etapa en ejecución
+    "mensaje": "",
+    "subprogreso": None,           # 0.0 a 1.0 dentro de la etapa (si aplica)
+    "inicio": None,
+    "fin": None,
+    "duracion_seg": None,
+    "resultado": None,
+    "error": None,
+    "log": [],
+}
+
+def _actualizar_estado(**cambios):
+    with _estado_lock:
+        estado_etl.update(cambios)
+
+def _reportar_progreso(etapa, mensaje, subprogreso=None):
+    """Callback que main.ejecutar_pipeline invoca en cada avance."""
+    print(f"[ETL {etapa + 1}/{len(ETAPAS_PIPELINE)}] {mensaje}")
+    with _estado_lock:
+        if estado_etl["etapa_actual"] != etapa:
+            estado_etl["subprogreso"] = None
+        estado_etl["etapa_actual"] = etapa
+        estado_etl["mensaje"] = mensaje
+        if subprogreso is not None:
+            estado_etl["subprogreso"] = round(float(subprogreso), 3)
+        # Solo se registran en el log los mensajes "de etapa", no cada tick de subprogreso
+        if subprogreso is None or subprogreso >= 1.0:
+            hora = datetime.now().strftime("%H:%M:%S")
+            estado_etl["log"] = (estado_etl["log"] + [f"{hora}  {mensaje}"])[-40:]
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -76,16 +116,42 @@ def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends
         
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"No autorizado: {str(e)}")
-    
+
+def verificar_admin(user=Depends(verificar_token_supabase)):
+    """Además de un token válido, exige que el usuario tenga rol 'admin'."""
+    app_meta = getattr(user, "app_metadata", None) or {}
+    user_meta = getattr(user, "user_metadata", None) or {}
+    rol = app_meta.get("role") or user_meta.get("role")
+    if rol != "admin":
+        raise HTTPException(status_code=403, detail="Se requiere rol de administrador.")
+    return user
+
 def tarea_etl_background():
-    """Wrapper para manejar la ejecución del modelo y liberar el candado"""
+    """Wrapper para manejar la ejecución del modelo, registrar el progreso y liberar el candado"""
     global etl_en_progreso
+    t0 = time.perf_counter()
     try:
-        # Ejecuta tu modelo directamente en la memoria de FastAPI
-        ejecutar_pipeline()
+        # Ejecuta tu modelo directamente en la memoria de FastAPI, informando cada etapa
+        resultado = ejecutar_pipeline(reportar=_reportar_progreso)
+        hora = datetime.now().strftime("%H:%M:%S")
+        with _estado_lock:
+            estado_etl.update(
+                estado="completado",
+                etapa_actual=len(ETAPAS_PIPELINE),
+                mensaje="Pipeline finalizado correctamente",
+                subprogreso=None,
+                resultado=resultado,
+            )
+            estado_etl["log"] = (estado_etl["log"] + [f"{hora}  Pipeline finalizado correctamente"])[-40:]
     except Exception as e:
+        traceback.print_exc()
         print(f"Error crítico durante la ejecución del ETL: {e}")
+        _actualizar_estado(estado="error", error=f"{type(e).__name__}: {e}", mensaje="El pipeline se detuvo por un error")
     finally:
+        _actualizar_estado(
+            fin=datetime.now(timezone.utc).isoformat(),
+            duracion_seg=round(time.perf_counter() - t0, 1),
+        )
         # Esto garantiza que el servidor se desbloquee incluso si el modelo falla
         etl_en_progreso = False
 
@@ -132,25 +198,42 @@ Endpoint administrativo para disparar la actualización de datos (MCDA / ETL) po
 Evita problemas de timeout respondiendo de inmediato gracias a BackgroundTasks.
 """
 @app.post("/api/admin/run-etl")
-async def run_etl(background_tasks: BackgroundTasks, admin_data: dict = Depends(verificar_token_supabase)):
+async def run_etl(background_tasks: BackgroundTasks, admin_data=Depends(verificar_admin)):
     global etl_en_progreso
-    
+
     if etl_en_progreso:
         raise HTTPException(status_code=409, detail="El modelo ya está en ejecución. Por favor espera.")
-    
-    # 1. Bloquear nuevas peticiones
+
+    # 1. Bloquear nuevas peticiones y reiniciar el estado de progreso
     etl_en_progreso = True
-    
+    hora = datetime.now().strftime("%H:%M:%S")
+    _actualizar_estado(
+        estado="ejecutando",
+        etapa_actual=0,
+        mensaje="Iniciando pipeline...",
+        subprogreso=None,
+        inicio=datetime.now(timezone.utc).isoformat(),
+        fin=None,
+        duracion_seg=None,
+        resultado=None,
+        error=None,
+        log=[f"{hora}  Pipeline solicitado por {getattr(admin_data, 'email', 'admin')}"],
+    )
+
     # 2. Enviar a segundo plano
     background_tasks.add_task(tarea_etl_background)
-    
+
     # 3. Responder instantáneamente al frontend
-    return {"mensaje": "Validación exitosa. Modelo iniciado en segundo plano."}
+    return {"mensaje": "Validación exitosa. Modelo iniciado en segundo plano.", "etapas": ETAPAS_PIPELINE}
 
 @app.get("/api/admin/etl-status")
-async def consultar_estado_etl():
-    global etl_en_progreso
-    return {"en_progreso": etl_en_progreso}
+async def consultar_estado_etl(admin_data=Depends(verificar_admin)):
+    with _estado_lock:
+        estado = dict(estado_etl)
+        estado["log"] = list(estado_etl["log"])
+    estado["en_progreso"] = etl_en_progreso
+    estado["total_etapas"] = len(ETAPAS_PIPELINE)
+    return estado
 
 """
 Endpoint encargado de compilar los 3 paneles analíticos de Grafana para un polígono específico 
@@ -409,4 +492,4 @@ def obtener_aptitud_suelos():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)

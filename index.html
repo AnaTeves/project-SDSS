@@ -118,7 +118,55 @@
         <div class="legend-item"><div class="legend-color" style="background: #1e293b;"></div> No apto biofísicamente</div>
     </div>
 
+    <!-- Modal de reprocesamiento del modelo (solo administrador) -->
+    <div id="pipeline-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pipeline-title">
+        <div class="modal-card pipeline-card">
+            <div class="pipeline-header">
+                <h3 id="pipeline-title">🔄 Reprocesar modelo</h3>
+                <button id="pipeline-close" class="pipeline-close" type="button" aria-label="Cerrar">✕</button>
+            </div>
+
+            <!-- Paso 1: confirmación -->
+            <div id="pipeline-confirm">
+                <p class="pipeline-warning">
+                    ⚠️ El proceso recalculará todos los polígonos (OTBN, Google Earth Engine y MCDA)
+                    y sobrescribirá la tabla <code>mapa_aptitud_finalv2</code>. Puede demorar algunos minutos.
+                </p>
+                <p class="pipeline-question">¿Desea continuar?</p>
+                <div class="pipeline-actions">
+                    <button id="pipeline-cancel" class="btn-outline" type="button">Cancelar</button>
+                    <button id="pipeline-accept" class="btn-submit" type="button">Sí, reprocesar</button>
+                </div>
+            </div>
+
+            <!-- Paso 2: progreso -->
+            <div id="pipeline-progress" class="hidden">
+                <div class="pipeline-status-row">
+                    <span id="pipeline-status-badge" class="pipeline-badge running">En ejecución</span>
+                    <span id="pipeline-timer" class="pipeline-timer">00:00</span>
+                </div>
+
+                <div class="pipeline-bar-bg"><div id="pipeline-bar" class="pipeline-bar-fill"></div></div>
+                <p id="pipeline-message" class="pipeline-message">Iniciando...</p>
+
+                <ol id="pipeline-steps" class="pipeline-steps"></ol>
+
+                <details class="pipeline-log-wrap">
+                    <summary>Ver registro de ejecución</summary>
+                    <pre id="pipeline-log" class="pipeline-log"></pre>
+                </details>
+
+                <p id="pipeline-error" class="error-msg hidden"></p>
+
+                <div class="pipeline-actions">
+                    <button id="pipeline-hide" class="btn-outline" type="button">Ocultar (seguirá ejecutándose)</button>
+                    <button id="pipeline-done" class="btn-submit hidden" type="button">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Script Principal -->
     <script src="js/app.js" defer></script>
 </body>
-</html>
+</html>

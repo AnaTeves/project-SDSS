@@ -266,25 +266,37 @@ function onEachFeature(feature, layer) {
 // ==========================================
 // CARGA DE DATOS DESDE FASTAPI (RENDER)
 // ==========================================
+const API_BASE = 'https://backend-sdss.onrender.com';
+//const API_BASE = 'http://localhost:8000';
+
 let geojsonLayer; // Declaramos la variable global para usarla en el buscador
 
-fetch('https://backend-sdss.onrender.com/api/aptitud-suelos')
-//fetch('http://localhost:8000/api/aptitud-suelos')
-    .then(response => {
-        if (!response.ok) throw new Error("Error en la respuesta de la red");
-        return response.json();
-    })
-    .then(geoJsonData => {
-        // Guardamos la capa generada en la variable global
-        geojsonLayer = L.geoJSON(geoJsonData, {
-            style: estiloFeature,
-            onEachFeature: onEachFeature
-        }).addTo(map);
-    })
-    .catch(error => {
-        console.error("Error cargando los polígonos:", error);
-        document.getElementById('detalle-suelo').innerHTML = `<p style="color:red; font-size: 12px;">Error de conexión con la API FastAPI.</p>`;
-    });
+// Carga (o recarga, tras reprocesar el modelo) la capa de polígonos
+function cargarPoligonos() {
+    return fetch(`${API_BASE}/api/aptitud-suelos`)
+        .then(response => {
+            if (!response.ok) throw new Error("Error en la respuesta de la red");
+            return response.json();
+        })
+        .then(geoJsonData => {
+            if (geojsonLayer) {
+                map.removeLayer(geojsonLayer);
+                capaSeleccionada = null;
+                Object.keys(capasPorId).forEach(k => delete capasPorId[k]);
+            }
+            // Guardamos la capa generada en la variable global
+            geojsonLayer = L.geoJSON(geoJsonData, {
+                style: estiloFeature,
+                onEachFeature: onEachFeature
+            }).addTo(map);
+        })
+        .catch(error => {
+            console.error("Error cargando los polígonos:", error);
+            document.getElementById('detalle-suelo').innerHTML = `<p style="color:red; font-size: 12px;">Error de conexión con la API FastAPI.</p>`;
+        });
+}
+
+cargarPoligonos();
 
 // ==========================================
 // LÓGICA DEL BUSCADOR POR COORDENADAS
@@ -465,6 +477,8 @@ function actualizarInterfazUsuario(user) {
             userBadge.classList.remove("visitor");
             adminControls.classList.remove("hidden");
             adminControls.style.display = "inline-flex";
+            // Si el pipeline ya estaba corriendo (p. ej. se recargó la página), retomamos el seguimiento
+            retomarPipelineSiCorre();
         } else {
             userBadge.textContent = "Modo: Visitante";
             userBadge.classList.add("visitor");
@@ -636,43 +650,280 @@ window.buscarDesdeDashboard = function(idPoligono) {
     }
 }
 
-async function ejecutarPipelineRemoto() {
-    const confirmacion = confirm("⚠️ ¿Esta seguro que desea reprocesar el modelo? El proceso recalculara los 429 poligonos y actualizara la base de datos. Esto puede demorar 1 minuto.");
-    
-    if (!confirmacion) return;
+// ==========================================
+// REPROCESAMIENTO DEL MODELO (PIPELINE main.py)
+// ==========================================
+const pipelineUI = {
+    modal:    document.getElementById("pipeline-modal"),
+    confirm:  document.getElementById("pipeline-confirm"),
+    progress: document.getElementById("pipeline-progress"),
+    steps:    document.getElementById("pipeline-steps"),
+    bar:      document.getElementById("pipeline-bar"),
+    message:  document.getElementById("pipeline-message"),
+    badge:    document.getElementById("pipeline-status-badge"),
+    timer:    document.getElementById("pipeline-timer"),
+    log:      document.getElementById("pipeline-log"),
+    error:    document.getElementById("pipeline-error"),
+    btnClose:  document.getElementById("pipeline-close"),
+    btnCancel: document.getElementById("pipeline-cancel"),
+    btnAccept: document.getElementById("pipeline-accept"),
+    btnHide:   document.getElementById("pipeline-hide"),
+    btnDone:   document.getElementById("pipeline-done"),
+};
+
+let pipelinePollId = null;
+let pipelineTimerId = null;
+let pipelineInicio = null;
+let pipelineEtapasDibujadas = null;
+let pipelineFallosConsecutivos = 0;
+
+async function obtenerTokenAdmin() {
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    if (error || !session) throw new Error("No se encontró una sesión activa. Vuelve a iniciar sesión.");
+    return session.access_token;
+}
+
+function botonPipeline() { return document.getElementById("btn-run-pipeline"); }
+
+function marcarBotonPipeline(enCurso) {
+    const btn = botonPipeline();
+    if (!btn) return;
+    btn.classList.toggle("running", enCurso);
+    btn.innerHTML = enCurso ? "⏳ Procesando… (ver)" : "🔄 Reprocesar modelo";
+}
+
+function mostrarModalPipeline(vista) {
+    pipelineUI.modal.classList.remove("hidden");
+    pipelineUI.confirm.classList.toggle("hidden", vista !== "confirm");
+    pipelineUI.progress.classList.toggle("hidden", vista !== "progress");
+}
+
+function ocultarModalPipeline() {
+    pipelineUI.modal.classList.add("hidden");
+}
+
+// Punto de entrada del botón "Reprocesar modelo"
+function ejecutarPipelineRemoto() {
+    // Si ya hay un proceso siguiéndose, el botón solo vuelve a mostrar el progreso
+    if (pipelinePollId) {
+        mostrarModalPipeline("progress");
+        return;
+    }
+    pipelineUI.btnAccept.disabled = false;
+    pipelineUI.btnAccept.textContent = "Sí, reprocesar";
+    mostrarModalPipeline("confirm");
+}
+
+async function iniciarPipeline() {
+    pipelineUI.btnAccept.disabled = true;
+    pipelineUI.btnAccept.textContent = "Iniciando…";
 
     try {
-        document.getElementById("btn-run-pipeline").disabled = true;
-
-        // Obtenemos la sesión actual y el token de Supabase
-        const { data: { session }, error } = await supabaseClient.auth.getSession();
-        
-        if (error || !session) {
-            alert("❌ No se encontró una sesión activa. Por favor, vuelve a iniciar sesión.");
-            document.getElementById("btn-run-pipeline").disabled = false;
-            return;
-        }
-
-        // Enviamos la petición incluyendo el token en los headers
-        const response = await fetch('https://backend-sdss.onrender.com/api/admin/run-etl', {
+        const token = await obtenerTokenAdmin();
+        const response = await fetch(`${API_BASE}/api/admin/run-etl`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}` // <- AQUÍ ENVIAMOS EL TOKEN
+                'Authorization': `Bearer ${token}`
             }
         });
+        const data = await response.json().catch(() => ({}));
 
-        const data = await response.json();
-
-        if (response.ok) {
-            alert("✅ " + data.mensaje);
+        if (response.ok || response.status === 409) {
+            // 409 = ya estaba corriendo: igual mostramos su progreso
+            prepararVistaProgreso(data.etapas);
+            mostrarModalPipeline("progress");
+            iniciarSeguimientoPipeline();
         } else {
-            alert("❌ Error en el servidor: " + (data.detail || "No fue posible iniciar el pipeline."));
+            throw new Error(data.detail || `Error ${response.status} al iniciar el pipeline.`);
         }
     } catch (err) {
-        console.error("Error al llamar a la API del pipeline:", err);
-        alert("❌ Error de conexión al intentar ejecutar el pipeline en el servidor.");
-    } finally {
-        document.getElementById("btn-run-pipeline").disabled = false;
+        console.error("Error al iniciar el pipeline:", err);
+        prepararVistaProgreso();
+        mostrarModalPipeline("progress");
+        renderizarEstadoPipeline({ estado: "error", error: err.message, mensaje: "No fue posible iniciar el pipeline" });
     }
 }
+
+function prepararVistaProgreso(etapas) {
+    pipelineUI.error.classList.add("hidden");
+    pipelineUI.btnDone.classList.add("hidden");
+    pipelineUI.btnHide.classList.remove("hidden");
+    pipelineUI.btnClose.disabled = false;
+    pipelineUI.bar.className = "pipeline-bar-fill";
+    pipelineUI.bar.style.width = "0%";
+    pipelineUI.badge.className = "pipeline-badge running";
+    pipelineUI.badge.textContent = "En ejecución";
+    pipelineUI.message.textContent = "Iniciando...";
+    pipelineUI.log.textContent = "";
+    pipelineUI.timer.textContent = "00:00";
+    pipelineEtapasDibujadas = null;
+    if (etapas) dibujarEtapas(etapas);
+}
+
+function dibujarEtapas(etapas) {
+    pipelineEtapasDibujadas = etapas;
+    pipelineUI.steps.innerHTML = etapas.map((nombre, i) => `
+        <li class="pipeline-step" data-idx="${i}">
+            <span class="step-icon">${i + 1}</span>
+            <span class="step-name">${nombre}</span>
+            <span class="step-sub"></span>
+        </li>`).join("");
+}
+
+function formatearDuracion(seg) {
+    seg = Math.max(0, Math.floor(seg));
+    const m = String(Math.floor(seg / 60)).padStart(2, "0");
+    const s = String(seg % 60).padStart(2, "0");
+    return `${m}:${s}`;
+}
+
+function renderizarEstadoPipeline(st) {
+    const etapas = st.etapas || pipelineEtapasDibujadas || [];
+    if (etapas.length && (!pipelineEtapasDibujadas || pipelineEtapasDibujadas.length !== etapas.length)) {
+        dibujarEtapas(etapas);
+    }
+    const total = etapas.length || 1;
+    const actual = st.etapa_actual ?? 0;
+
+    // Estado visual de cada etapa
+    pipelineUI.steps.querySelectorAll(".pipeline-step").forEach(li => {
+        const idx = Number(li.dataset.idx);
+        const icon = li.querySelector(".step-icon");
+        const sub = li.querySelector(".step-sub");
+        li.className = "pipeline-step";
+        sub.textContent = "";
+        icon.textContent = idx + 1;
+
+        if (st.estado === "completado" || idx < actual) {
+            li.classList.add("done");
+            icon.textContent = "✓";
+        } else if (idx === actual) {
+            if (st.estado === "error") {
+                li.classList.add("failed");
+                icon.textContent = "✕";
+            } else {
+                li.classList.add("active");
+                icon.textContent = "";
+                if (st.subprogreso != null && st.subprogreso < 1) {
+                    sub.textContent = `${Math.round(st.subprogreso * 100)}%`;
+                }
+            }
+        }
+    });
+
+    // Barra global: etapas completas + fracción de la actual
+    let pct;
+    if (st.estado === "completado") pct = 100;
+    else pct = ((Math.min(actual, total) + (st.subprogreso || 0)) / total) * 100;
+    pipelineUI.bar.style.width = `${Math.min(pct, 100).toFixed(1)}%`;
+
+    if (st.mensaje) pipelineUI.message.textContent = st.mensaje;
+    if (st.log) {
+        pipelineUI.log.textContent = st.log.join("\n");
+        pipelineUI.log.scrollTop = pipelineUI.log.scrollHeight;
+    }
+    if (st.inicio && !pipelineInicio) pipelineInicio = new Date(st.inicio);
+
+    if (st.estado === "completado") {
+        finalizarSeguimientoPipeline();
+        pipelineUI.badge.className = "pipeline-badge done";
+        pipelineUI.badge.textContent = "Completado";
+        pipelineUI.bar.classList.add("done");
+        const r = st.resultado || {};
+        pipelineUI.message.textContent =
+            `✅ Modelo reprocesado${r.poligonos ? `: ${r.poligonos} polígonos actualizados` : ""}` +
+            `${st.duracion_seg ? ` en ${formatearDuracion(st.duracion_seg)}` : ""}. Actualizando mapa…`;
+        if (st.duracion_seg) pipelineUI.timer.textContent = formatearDuracion(st.duracion_seg);
+        cargarPoligonos().then(() => {
+            pipelineUI.message.textContent = pipelineUI.message.textContent.replace("Actualizando mapa…", "Mapa actualizado.");
+        });
+    } else if (st.estado === "error") {
+        finalizarSeguimientoPipeline();
+        pipelineUI.badge.className = "pipeline-badge error";
+        pipelineUI.badge.textContent = "Error";
+        pipelineUI.bar.classList.add("error");
+        pipelineUI.error.textContent = "❌ " + (st.error || "Error desconocido");
+        pipelineUI.error.classList.remove("hidden");
+        if (st.duracion_seg) pipelineUI.timer.textContent = formatearDuracion(st.duracion_seg);
+    }
+}
+
+async function consultarEstadoPipeline() {
+    try {
+        const token = await obtenerTokenAdmin();
+        const res = await fetch(`${API_BASE}/api/admin/etl-status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const st = await res.json();
+        pipelineFallosConsecutivos = 0;
+        renderizarEstadoPipeline(st);
+    } catch (err) {
+        pipelineFallosConsecutivos++;
+        console.warn("No se pudo consultar el estado del pipeline:", err);
+        pipelineUI.message.textContent = "Reintentando conexión con el servidor…";
+        if (pipelineFallosConsecutivos >= 10) {
+            renderizarEstadoPipeline({
+                estado: "error",
+                error: "Se perdió la conexión con el servidor. El proceso podría seguir ejecutándose; vuelve a abrir este panel más tarde.",
+            });
+        }
+    }
+}
+
+function iniciarSeguimientoPipeline() {
+    detenerTimersPipeline();
+    pipelineInicio = new Date();
+    pipelineFallosConsecutivos = 0;
+    marcarBotonPipeline(true);
+
+    pipelineTimerId = setInterval(() => {
+        pipelineUI.timer.textContent = formatearDuracion((Date.now() - pipelineInicio.getTime()) / 1000);
+    }, 1000);
+
+    consultarEstadoPipeline();
+    pipelinePollId = setInterval(consultarEstadoPipeline, 2000);
+}
+
+function detenerTimersPipeline() {
+    clearInterval(pipelinePollId);
+    clearInterval(pipelineTimerId);
+    pipelinePollId = null;
+    pipelineTimerId = null;
+}
+
+function finalizarSeguimientoPipeline() {
+    detenerTimersPipeline();
+    pipelineInicio = null;
+    marcarBotonPipeline(false);
+    pipelineUI.btnHide.classList.add("hidden");
+    pipelineUI.btnDone.classList.remove("hidden");
+}
+
+// Al iniciar sesión como admin: si el pipeline ya está corriendo, reabrimos su seguimiento
+async function retomarPipelineSiCorre() {
+    if (pipelinePollId) return;
+    try {
+        const token = await obtenerTokenAdmin();
+        const res = await fetch(`${API_BASE}/api/admin/etl-status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const st = await res.json();
+        if (st.en_progreso) {
+            prepararVistaProgreso(st.etapas);
+            iniciarSeguimientoPipeline();
+            if (st.inicio) pipelineInicio = new Date(st.inicio);
+            renderizarEstadoPipeline(st);
+            mostrarModalPipeline("progress");
+        }
+    } catch (_) { /* silencioso */ }
+}
+
+// Listeners del modal
+pipelineUI.btnAccept.addEventListener("click", iniciarPipeline);
+pipelineUI.btnCancel.addEventListener("click", ocultarModalPipeline);
+pipelineUI.btnClose.addEventListener("click", ocultarModalPipeline);
+pipelineUI.btnHide.addEventListener("click", ocultarModalPipeline);
+pipelineUI.btnDone.addEventListener("click", ocultarModalPipeline);
