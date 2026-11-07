@@ -116,7 +116,7 @@ function generarDiagnostico(props) {
 
     const htmlComposicion = `
         <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,0.1); font-size: 11px; display: flex; flex-direction: column; gap: 2px;">
-            <b>Composición del polígono:</b>
+            <b>Composición del polígono: <a href="#" class="ayuda-link" onclick="abrirGuia('composicion'); return false;" title="¿Cómo se calcula?">¿qué es esto?</a></b>
             ${listaComposicion.join('')}
         </div>`;
 
@@ -188,10 +188,10 @@ function crearBarraProgreso(label, valor) {
         </div>`;
 }
 
-function seleccionarPoligono(feature, layer) {
+function seleccionarPoligono(feature, layer, registrar = true) {
     resaltarPoligono(layer);
     const props = feature.properties;
-    if (props.id) {
+    if (props.id && registrar) {
         registrarConsultaPoligono(props.id);
     }
     const container = document.getElementById('detalle-suelo');
@@ -273,12 +273,14 @@ let geojsonLayer; // Declaramos la variable global para usarla en el buscador
 
 // Carga (o recarga, tras reprocesar el modelo) la capa de polígonos
 function cargarPoligonos() {
-    return fetch(`${API_BASE}/api/aptitud-suelos`)
+    // cache: 'no-store' evita que el navegador reutilice un mapa anterior tras reprocesar el modelo
+    return fetch(`${API_BASE}/api/aptitud-suelos`, { cache: 'no-store' })
         .then(response => {
             if (!response.ok) throw new Error("Error en la respuesta de la red");
             return response.json();
         })
         .then(geoJsonData => {
+            const idSeleccionado = capaSeleccionada?.feature?.properties?.id;
             if (geojsonLayer) {
                 map.removeLayer(geojsonLayer);
                 capaSeleccionada = null;
@@ -289,6 +291,11 @@ function cargarPoligonos() {
                 style: estiloFeature,
                 onEachFeature: onEachFeature
             }).addTo(map);
+            // Si había un polígono abierto en el panel, se vuelve a mostrar con los valores nuevos
+            if (idSeleccionado && capasPorId[idSeleccionado]) {
+                const capa = capasPorId[idSeleccionado];
+                seleccionarPoligono(capa.feature, capa, false);
+            }
         })
         .catch(error => {
             console.error("Error cargando los polígonos:", error);
@@ -838,7 +845,9 @@ function renderizarEstadoPipeline(st) {
         const r = st.resultado || {};
         pipelineUI.message.textContent =
             `✅ Modelo reprocesado${r.poligonos ? `: ${r.poligonos} polígonos actualizados` : ""}` +
-            `${st.duracion_seg ? ` en ${formatearDuracion(st.duracion_seg)}` : ""}. Actualizando mapa…`;
+            `${st.duracion_seg ? ` en ${formatearDuracion(st.duracion_seg)}` : ""}.` +
+            (r.cambios ? ` Respecto del mapa anterior: ${r.cambios.aptitud_suelo} con otra aptitud de suelo y ${r.cambios.clasificacion} con otra categoría.` : "") +
+            ` Actualizando mapa…`;
         if (st.duracion_seg) pipelineUI.timer.textContent = formatearDuracion(st.duracion_seg);
         cargarPoligonos().then(() => {
             pipelineUI.message.textContent = pipelineUI.message.textContent.replace("Actualizando mapa…", "Mapa actualizado.");
@@ -1054,9 +1063,12 @@ function renderParametros() {
     }
     const q = (paramUI.filtro.value || "").trim().toLowerCase();
     const usadas = new Set(paramDatos.variables_del_modelo || []);
-    let html = `<div class="param-cabecera"><b>${escHTML(paramDatos.titulo)}</b><span>${escHTML(paramDatos.descripcion)}</span></div>
+    const sinParam = paramDatos.sin_parametro || [];
+    const avisoSinParam = sinParam.length ? `<div class="param-aviso"><b>⚠ Valores de la carta de suelos sin puntaje en la matriz</b> (el modelo les asigna 0.0):
+        ${sinParam.map(x => `<span>${escHTML(x.variable)}: «${escHTML(x.valor)}» (${x.poligonos} pol.)</span>`).join("")}</div>` : "";
+    let html = `<div class="param-cabecera"><b>${escHTML(paramDatos.titulo)}</b><span>${escHTML(paramDatos.descripcion)}</span></div>${avisoSinParam}
         <table class="param-tabla"><thead><tr>
-            <th>Variable</th><th>Atributo del suelo</th><th class="col-puntaje">Puntaje (0-1)</th>
+            <th>Variable</th><th>Atributo del suelo</th><th class="col-poligonos" title="Polígonos de la carta de suelos con este atributo">Polígonos</th><th class="col-puntaje">Puntaje (0-1)</th>
             <th>Criterio biológico y justificación científica</th><th>Referencia clave</th>
         </tr></thead><tbody>`;
     let seccion = null;
@@ -1066,7 +1078,7 @@ function renderParametros() {
         if (p.seccion !== seccion) {
             seccion = p.seccion;
             const noUsada = !usadas.has(p.variable);
-            html += `<tr class="param-seccion"><td colspan="5">${escHTML(seccion)}${noUsada ? ' <span class="param-no-usada">no se utiliza en la versión actual del modelo</span>' : ""}</td></tr>`;
+            html += `<tr class="param-seccion"><td colspan="6">${escHTML(seccion)}${noUsada ? ' <span class="param-no-usada">no se utiliza en la versión actual del modelo</span>' : ""}</td></tr>`;
         }
         const valor = paramCambios.has(p.id) ? paramCambios.get(p.id) : p.puntaje;
         const modificado = paramCambios.has(p.id);
@@ -1074,6 +1086,7 @@ function renderParametros() {
         html += `<tr class="${modificado ? "param-modificado" : ""}">
             <td class="param-var">${escHTML(p.variable)}</td>
             <td>${escHTML(p.atributo)}</td>
+            <td class="col-poligonos ${p.poligonos === 0 ? "sin-uso" : ""}" title="${p.poligonos === 0 ? "Ningún polígono tiene este atributo: modificarlo no cambia el mapa" : "Polígonos de la carta de suelos con este atributo"}">${p.poligonos ?? "–"}</td>
             <td class="col-puntaje">
                 <input type="number" min="0" max="1" step="0.05" value="${valor}" data-id="${p.id}" data-actual="${p.puntaje}"
                        title="Valor original del Excel: ${p.puntaje_original}${p.actualizado_por ? ` · Editado por ${escHTML(p.actualizado_por)}` : ""}">
@@ -1172,3 +1185,48 @@ paramUI.btnReprocesar.addEventListener("click", () => {
     paramUI.modal.classList.add("hidden");
     ejecutarPipelineRemoto();
 });
+
+
+// ==========================================
+// GUÍA DE USO (todos los perfiles)
+// ==========================================
+const guiaUI = {
+    modal: document.getElementById("guia-modal"),
+    contenido: document.getElementById("guia-contenido"),
+    nav: document.querySelectorAll(".guia-nav a"),
+};
+
+function marcarSeccionGuia(id) {
+    guiaUI.nav.forEach(a => a.classList.toggle("activa", a.getAttribute("href") === "#" + id));
+}
+
+window.abrirGuia = function (seccion) {
+    guiaUI.modal.classList.remove("hidden");
+    const destino = seccion ? document.getElementById("guia-" + seccion) : null;
+    if (destino) {
+        guiaUI.contenido.scrollTop = destino.offsetTop - guiaUI.contenido.offsetTop;
+        destino.classList.remove("guia-destacada");
+        void destino.offsetWidth;
+        destino.classList.add("guia-destacada");
+        marcarSeccionGuia(destino.id);
+    } else {
+        guiaUI.contenido.scrollTop = 0;
+        marcarSeccionGuia("guia-que-es");
+    }
+};
+
+guiaUI.nav.forEach(a => a.addEventListener("click", e => {
+    e.preventDefault();
+    const destino = document.querySelector(a.getAttribute("href"));
+    guiaUI.contenido.scrollTop = destino.offsetTop - guiaUI.contenido.offsetTop;
+    marcarSeccionGuia(destino.id);
+}));
+guiaUI.contenido.addEventListener("scroll", () => {
+    const tope = guiaUI.contenido.scrollTop + guiaUI.contenido.offsetTop + 40;
+    let actual = null;
+    guiaUI.contenido.querySelectorAll("section").forEach(sec => { if (sec.offsetTop <= tope) actual = sec.id; });
+    if (actual) marcarSeccionGuia(actual);
+});
+document.getElementById("btn-guia").addEventListener("click", () => abrirGuia());
+document.getElementById("guia-cerrar").addEventListener("click", () => guiaUI.modal.classList.add("hidden"));
+guiaUI.modal.addEventListener("click", e => { if (e.target === guiaUI.modal) guiaUI.modal.classList.add("hidden"); });

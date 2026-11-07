@@ -23,7 +23,7 @@ def ejecutar_validacion_censo(tabla_censo='quebracho_final'):
     # 1. Cargar el mapa de aptitud final (Agregamos aptitud_suelo para el Kill-Switch)
     query_mapa = """
         SELECT id, aptitud_biofisica, aptitud_suelo, geom 
-        FROM mapa_aptitud_final;
+        FROM mapa_aptitud_finalv2;
     """
     mapa_gdf = db.cargar_capa_postgis(query_mapa, geom_col='geom')
     

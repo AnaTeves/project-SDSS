@@ -85,6 +85,7 @@
         </div>
 
         <div class="top-bar-right">
+            <button id="btn-guia" class="btn-guia" type="button">ℹ️ Guía de uso</button>
             <span id="user-badge" class="badge visitor">Modo: Visitante</span>
             <button id="btn-login-trigger" class="btn-primary">Iniciar sesión</button>
             <button id="btn-logout" class="btn-secondary hidden">Cerrar sesión</button>
@@ -187,6 +188,114 @@
                     <button id="param-cerrar" class="btn-outline" type="button">Cerrar</button>
                     <button id="param-reprocesar" class="btn-outline hidden" type="button">🔄 Reprocesar modelo ahora</button>
                     <button id="param-guardar" class="btn-submit" type="button" disabled>Guardar cambios</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guía de uso (todos los perfiles) -->
+    <div id="guia-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="guia-title">
+        <div class="modal-card guia-card">
+            <div class="pipeline-header">
+                <h3 id="guia-title">ℹ️ Guía de uso de SITCHA</h3>
+                <button id="guia-cerrar" class="pipeline-close" type="button" aria-label="Cerrar">✕</button>
+            </div>
+            <div class="guia-layout">
+                <nav class="guia-nav" aria-label="Secciones de la guía">
+                    <a href="#guia-que-es">¿Qué es SITCHA?</a>
+                    <a href="#guia-mapa">Explorar el mapa</a>
+                    <a href="#guia-categorias">Categorías del mapa</a>
+                    <a href="#guia-buscar">Buscar por coordenadas</a>
+                    <a href="#guia-panel">Panel de diagnóstico</a>
+                    <a href="#guia-composicion">Composición del polígono</a>
+                    <a href="#guia-puntajes">Cómo se calcula el puntaje</a>
+                    <a href="#guia-pdf">Reporte técnico PDF</a>
+                    <a href="#guia-alcance">Alcance y limitaciones</a>
+                    <a href="#guia-admin">Perfil administrador</a>
+                </nav>
+                <div class="guia-contenido" id="guia-contenido">
+                    <section id="guia-que-es">
+                        <h4>¿Qué es SITCHA?</h4>
+                        <p>SITCHA es un sistema de soporte de decisiones que evalúa, para cada polígono de la carta de suelos del INTA en la provincia del Chaco, si el terreno es apto para intervenir con <i>Quebracho Colorado</i> (<i>Schinopsis balansae</i>) y qué tipo de intervención admite la Ley de Bosques Nativos (Ley 26.331).</p>
+                        <p>Como visitante podés consultar libremente el mapa, revisar el diagnóstico de cualquier polígono y descargar su reporte técnico. No necesitás cuenta ni contraseña.</p>
+                    </section>
+
+                    <section id="guia-mapa">
+                        <h4>Explorar el mapa</h4>
+                        <ul>
+                            <li><b>Desplazarse:</b> hacé clic y arrastrá el mapa. Para acercarte o alejarte usá la rueda del mouse o los botones <b>+</b> y <b>−</b> de la esquina inferior derecha.</li>
+                            <li><b>Ver un polígono:</b> al pasar el cursor, el polígono se resalta; al hacer clic, queda marcado con borde oscuro y su diagnóstico aparece en el panel derecho.</li>
+                            <li><b>Leyenda:</b> el recuadro inferior izquierdo indica el significado de cada color.</li>
+                        </ul>
+                    </section>
+
+                    <section id="guia-categorias">
+                        <h4>Categorías del mapa</h4>
+                        <ul class="guia-leyenda">
+                            <li><span style="background:#22c55e"></span><div><b>Apto – Reforestación productiva (zona verde):</b> terreno apto, ubicado mayormente en zona verde de la OTBN o sin bosque nativo categorizado. Admite plantaciones en bloque o cortinas forestales.</div></li>
+                            <li><span style="background:#eab308"></span><div><b>Apto – Enriquecimiento sostenible (zona amarilla):</b> terreno apto en bosque de mediano valor de conservación. Admite enriquecimiento bajo el dosel nativo, sin desmonte.</div></li>
+                            <li><span style="background:#ef4444"></span><div><b>Apto – Prioridad restauración ecológica (zona roja):</b> terreno apto en bosque de muy alto valor de conservación. Solo admite restauración y preservación.</div></li>
+                            <li><span style="background:#6b7280"></span><div><b>No apto (uso excluido):</b> el suelo y el clima serían aptos, pero la cobertura actual (MapBiomas) es incompatible: áreas urbanas, cuerpos de agua o usos agropecuarios, entre otras.</div></li>
+                            <li><span style="background:#1e293b"></span><div><b>No apto:</b> las condiciones de suelo, lluvia y vegetación no alcanzan el mínimo requerido por la especie.</div></li>
+                        </ul>
+                    </section>
+
+                    <section id="guia-buscar">
+                        <h4>Buscar por coordenadas</h4>
+                        <p>Escribí la latitud y la longitud en grados decimales, separadas por una coma, en el buscador de la barra superior, y presioná <b>Enter</b> o la lupa. Por ejemplo: <code>-26.8, -60.5</code>. En el Chaco ambos valores son negativos.</p>
+                        <p>El mapa se centra en el polígono que contiene ese punto y abre su diagnóstico. Si el punto queda fuera del área de estudio, el sistema te avisa.</p>
+                    </section>
+
+                    <section id="guia-panel">
+                        <h4>Panel de diagnóstico</h4>
+                        <p>Al seleccionar un polígono, el panel derecho muestra, de arriba hacia abajo:</p>
+                        <ul>
+                            <li><b>Número de polígono y categoría</b> asignada.</li>
+                            <li><b>Diagnóstico:</b> la recomendación de intervención y, si el terreno no es apto, el motivo (aptitud insuficiente o uso del suelo excluido).</li>
+                            <li><b>Composición del polígono:</b> el porcentaje de su superficie en cada zona de la OTBN (ver la sección siguiente).</li>
+                            <li><b>Métricas de idoneidad biofísica:</b> la aptitud del suelo, de la lluvia y del índice de vegetación (NDVI), en una escala de 0 a 1, y el puntaje biofísico que las combina.</li>
+                            <li><b>Atributos del suelo:</b> el subgrupo taxonómico y la textura superficial según la carta de suelos del INTA.</li>
+                            <li><b>Puntaje final</b> y el botón para generar el reporte técnico en PDF.</li>
+                        </ul>
+                    </section>
+
+                    <section id="guia-composicion">
+                        <h4>Composición del polígono</h4>
+                        <p>Indica qué parte de la superficie del polígono de suelo está en cada categoría del Ordenamiento Territorial de Bosques Nativos (OTBN, Ley 26.331): <b>zona roja</b> (muy alto valor de conservación), <b>zona amarilla</b> (mediano valor), <b>zona verde</b> (bajo valor) y <b>zona libre</b> (superficie sin bosque nativo categorizado).</p>
+                        <p><b>¿Cómo se calcula?</b> El mapa oficial de la OTBN se convirtió en una grilla de celdas pequeñas (ráster), donde cada celda tiene la categoría del lugar. Para cada polígono de suelo se cuentan las celdas que caen dentro de él, incluidas las que su borde toca, y se divide la cantidad de cada categoría por el total de celdas del polígono. La zona libre es lo que resta para llegar al 100 %: celdas sin categoría de bosque.</p>
+                        <p><b>¿Por qué se elige la categoría de mayor porcentaje?</b> Los límites de la carta de suelos y los de la OTBN fueron trazados por separado, así que casi ningún polígono cae entero en una sola zona. Para emitir una única recomendación por polígono se aplica una <b>regla de dominancia</b>: la categoría de bosque con mayor superficie define el tipo de intervención. Esto evita que una franja mínima en el borde, a menudo producto de pequeñas diferencias entre ambos mapas, determine la recomendación para todo el terreno.</p>
+                        <p>La comparación se hace entre las tres zonas de bosque. La zona libre no compite porque no impone restricciones legales: si el polígono contiene bosque categorizado, prevalece la zona de bosque más extensa, por precaución. Si no predomina ni la zona roja ni la amarilla, se recomienda reforestación productiva.</p>
+                        <p class="guia-nota">La composición completa se muestra para que puedas ver también las porciones minoritarias. Si una parte del polígono está en zona roja, en esa parte rigen las restricciones de la zona roja, aunque la categoría general sea otra.</p>
+                    </section>
+
+                    <section id="guia-puntajes">
+                        <h4>Cómo se calcula el puntaje</h4>
+                        <ul>
+                            <li><b>Aptitud del suelo:</b> combina textura (35 %), subgrupo (25 %), drenaje (25 %) y alcalinidad (15 %) de la carta de suelos, según una matriz de puntajes basada en la literatura sobre la especie.</li>
+                            <li><b>Aptitud de la lluvia:</b> es máxima entre 900 y 1500 mm anuales y disminuye hasta anularse por debajo de 400 mm o por encima de 2500 mm.</li>
+                            <li><b>Aptitud del NDVI:</b> mide el vigor de la vegetación histórica entre 0.10 y 0.80.</li>
+                            <li><b>Puntaje biofísico:</b> suelo 40 %, lluvia 40 % y NDVI 20 %. Si la aptitud del suelo es 0.40 o menor, el puntaje se anula, porque un buen clima no compensa un suelo inadecuado. Un polígono se considera apto cuando su puntaje biofísico es 0.60 o mayor.</li>
+                        </ul>
+                    </section>
+
+                    <section id="guia-pdf">
+                        <h4>Reporte técnico PDF</h4>
+                        <p>El botón <b>«Generar reporte técnico (PDF)»</b> del panel descarga un informe del polígono con su ubicación (centroide, coordenadas POSGAR y encuadre), sus atributos de suelo, el dictamen de aptitud y gráficos con los indicadores biofísicos, legales y de cobertura. La generación puede tardar unos segundos.</p>
+                    </section>
+
+                    <section id="guia-alcance">
+                        <h4>Alcance y limitaciones</h4>
+                        <ul>
+                            <li>SITCHA es una herramienta <b>consultiva</b>: no reemplaza la evaluación de campo ni el juicio de profesionales forestales o de la autoridad de aplicación.</li>
+                            <li>La unidad de análisis es el polígono de la carta de suelos. Las variaciones del terreno más pequeñas que esa escala no se reflejan en el resultado.</li>
+                            <li>La primera carga del día puede tardar hasta un minuto, porque el servidor gratuito se suspende cuando no recibe consultas.</li>
+                        </ul>
+                    </section>
+
+                    <section id="guia-admin">
+                        <h4>Perfil administrador</h4>
+                        <p>El acceso institucional, con el botón «Iniciar sesión», está reservado para la administración del sistema. Además de todo lo anterior, el administrador puede consultar el panel de auditoría, editar los puntajes de la matriz edáfica y reprocesar el modelo. Para consultar el mapa no hace falta iniciar sesión.</p>
+                    </section>
                 </div>
             </div>
         </div>

@@ -252,9 +252,19 @@ class CambiosPuntajes(BaseModel):
 def listar_parametros_edaficos(admin_data=Depends(verificar_admin)):
     """Matriz completa: hoja de parámetros (puntaje editable) y hojas complementarias del Excel (solo lectura)."""
     try:
+        parametros = parametros_edaficos.obtener_parametros(engine)
+        try:
+            conteos, sin_parametro = parametros_edaficos.uso_en_carta_de_suelos(engine)
+            for p in parametros:
+                clave = f"{p['variable']}|{parametros_edaficos.normalizar_atributo(p['atributo'])}"
+                p["poligonos"] = conteos.get(clave, 0)
+        except Exception as e:
+            print(f"No se pudo calcular el uso de los atributos: {e}")
+            sin_parametro = None
         return {
             **parametros_edaficos.leer_encabezado_excel(),
-            "parametros": parametros_edaficos.obtener_parametros(engine),
+            "parametros": parametros,
+            "sin_parametro": sin_parametro,
             "hojas_complementarias": parametros_edaficos.leer_hojas_complementarias(),
             "variables_del_modelo": ["text_sups1", "sgrup_sue1", "drenaje_s1", "alcalin_s1"],
         }

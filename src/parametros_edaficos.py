@@ -9,9 +9,11 @@ descargarse con los puntajes vigentes, conservando el resto del archivo sin camb
 """
 import io
 import os
+import re
 from datetime import datetime, timezone
 
 import openpyxl
+import pandas as pd
 from sqlalchemy import inspect, text
 
 RAIZ_PROYECTO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -19,6 +21,53 @@ RUTA_EXCEL = os.path.join(RAIZ_PROYECTO, 'assets', 'edaphic-model-parameters-v2.
 HOJA_PARAMETROS = 'Parametros del modelo'
 TABLA = 'parametros_edaficos'
 COL_VARIABLE, COL_ATRIBUTO, COL_PUNTAJE, COL_CRITERIO, COL_REFERENCIA = 1, 2, 3, 4, 5
+
+
+# Variables usadas por el submodelo edáfico y valor que reemplaza a los nulos (igual que MCDAEngine)
+VARIABLES_MODELO = {
+    'text_sups1': 'no determinada',
+    'sgrup_sue1': 'no clasificado xx',
+    'drenaje_s1': '-',
+    'alcalin_s1': '-',
+}
+
+
+def normalizar_atributo(valor):
+    """
+    Clave de comparación entre la carta de suelos y la matriz: minúsculas, sin espacios extra y sin
+    aclaraciones entre paréntesis. Así «Franco Limosa (Silt Loam)» del Excel coincide con «Franco limosa».
+    """
+    s = str(valor).strip().lower()
+    s = re.sub(r'\s*\([^)]*\)', '', s)
+    return re.sub(r'\s+', ' ', s).strip()
+
+
+def normalizar_serie(serie):
+    """Versión vectorizada de normalizar_atributo para columnas de pandas."""
+    return (serie.astype(str).str.strip().str.lower()
+            .str.replace(r'\s*\([^)]*\)', '', regex=True)
+            .str.replace(r'\s+', ' ', regex=True).str.strip())
+
+
+def uso_en_carta_de_suelos(engine):
+    """
+    Cuenta cuántos polígonos de proc_suelos_chaco tienen cada atributo (con la misma normalización que
+    usa el modelo) y detecta los valores de la carta que no tienen puntaje en la matriz (reciben 0.0).
+    """
+    columnas = ', '.join(VARIABLES_MODELO)
+    df = pd.read_sql(f'SELECT {columnas} FROM "proc_suelos_chaco"', con=engine)
+    with engine.connect() as conn:
+        claves = {(v.strip(), normalizar_atributo(a)) for v, a in conn.execute(text(f"SELECT variable, atributo FROM {TABLA}"))}
+    conteos, sin_parametro = {}, []
+    for var, nulo in VARIABLES_MODELO.items():
+        crudos = df[var].fillna(nulo).astype(str)
+        normalizados = normalizar_serie(crudos)
+        for clave, n in normalizados.value_counts().items():
+            conteos[f'{var}|{clave}'] = int(n)
+            if (var, clave) not in claves:
+                ejemplo = crudos[normalizados == clave].iloc[0].strip()
+                sin_parametro.append({'variable': var, 'valor': ejemplo, 'poligonos': int(n)})
+    return conteos, sin_parametro
 
 
 def _texto(valor):
@@ -189,7 +238,7 @@ def mapas_desde_bd(engine, variables):
     for variable, atributo, puntaje in filas:
         variable = variable.strip()
         if variable in mapas:
-            mapas[variable][atributo.strip().lower()] = float(puntaje)
+            mapas[variable][normalizar_atributo(atributo)] = float(puntaje)
     vacias = [v for v, m in mapas.items() if not m]
     if vacias:
         raise ValueError(f"La tabla '{TABLA}' no tiene parámetros para: {', '.join(vacias)}")

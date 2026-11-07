@@ -61,11 +61,11 @@ def _verificar_raster_otbn(ruta_otbn):
 
 def _porcentajes_otbn(raster, geometria):
     """
-    Calcula el % de píxeles rojo (1), amarillo (2) y verde (3) de un polígono.
-    Equivale a rasterio.mask(crop=True, filled=False, all_touched=True) seguido de .filled(0):
-    el denominador es la ventana rectangular que cubre al polígono, y los píxeles fuera del
-    polígono o sin dato cuentan como 0 (zona libre). La diferencia es que la ventana se lee
-    por bloques de filas, de modo que la memoria no depende del tamaño del polígono.
+    Calcula el % de la superficie de un polígono que cae en zona roja (1), amarilla (2) y verde (3).
+    Se cuentan los píxeles del ráster cuyo área toca el polígono (all_touched=True) y se dividen por el
+    total de píxeles del polígono; los píxeles sin categoría cuentan en el total y constituyen la
+    superficie libre (100 - rojo - amarillo - verde). La ventana que cubre al polígono se lee por
+    bloques de filas, de modo que la memoria no depende de su tamaño.
     """
     formas = [mapping(geometria)]
     try:
@@ -75,23 +75,26 @@ def _porcentajes_otbn(raster, geometria):
 
     col0, fila0 = int(ventana.col_off), int(ventana.row_off)
     alto, ancho = int(ventana.height), int(ventana.width)
-    total_pixeles = alto * ancho
-    if total_pixeles <= 0:
+    if alto <= 0 or ancho <= 0:
         return 0.0, 0.0, 0.0
 
     conteos = {1: 0, 2: 0, 3: 0}
+    pixeles_poligono = 0
     for desde in range(0, alto, FILAS_POR_BLOQUE):
         filas = min(FILAS_POR_BLOQUE, alto - desde)
         bloque = Window(col0, fila0 + desde, ancho, filas)
         datos = raster.read(1, window=bloque, masked=True)  # enmascara los píxeles sin dato
-        fuera = geometry_mask(formas, out_shape=(filas, ancho),
-                              transform=raster.window_transform(bloque), all_touched=True)
-        valores = datos.data[~(fuera | np.ma.getmaskarray(datos))]
+        dentro = ~geometry_mask(formas, out_shape=(filas, ancho),
+                                transform=raster.window_transform(bloque), all_touched=True)
+        pixeles_poligono += int(np.count_nonzero(dentro))
+        valores = datos.data[dentro & ~np.ma.getmaskarray(datos)]
         for clase in conteos:
             conteos[clase] += int(np.count_nonzero(valores == clase))
-        del datos, fuera, valores
+        del datos, dentro, valores
 
-    return tuple(round(conteos[c] / total_pixeles * 100, 2) for c in (1, 2, 3))
+    if pixeles_poligono == 0:
+        return 0.0, 0.0, 0.0
+    return tuple(round(conteos[c] / pixeles_poligono * 100, 2) for c in (1, 2, 3))
 
 
 # Cruza cada polígono de suelo con el ráster local de la OTBN mediante `rasterio`.
@@ -173,6 +176,22 @@ def obtener_porcentajes_otbn(db, suelos_gdf, reportar):
     )
 
 
+def comparar_con_resultado_anterior(db, resultado, tabla='mapa_aptitud_finalv2'):
+    """Cuenta cuántos polígonos cambian respecto de la tabla vigente, antes de sobrescribirla."""
+    if not inspect(db.engine).has_table(tabla):
+        return None
+    previo = pd.read_sql(f'SELECT id, aptitud_suelo, aptitud_biofisica, clasificacion_final FROM "{tabla}"', con=db.engine)
+    actual = pd.DataFrame(resultado[['id', 'aptitud_suelo', 'aptitud_biofisica', 'clasificacion_final']])
+    cruce = actual.merge(previo, on='id', how='left', suffixes=('', '_previo'))
+    def distintos(col):
+        return int(((cruce[col] - cruce[col + '_previo']).abs() > 1e-6).sum())
+    return {
+        'aptitud_suelo': distintos('aptitud_suelo'),
+        'aptitud_biofisica': distintos('aptitud_biofisica'),
+        'clasificacion': int((cruce['clasificacion_final'] != cruce['clasificacion_final_previo']).sum()),
+    }
+
+
 def ejecutar_pipeline(reportar=None):
     """
     Ejecuta el pipeline completo.
@@ -214,13 +233,18 @@ def ejecutar_pipeline(reportar=None):
     resultado_final = pipeline.calcular_aptitud_y_reforestacion(suelos_enriquecidos)
 
     # ETAPA 5: Exporta el GeoDataFrame final consolidado de vuelta a PostGIS.
+    reportar(5, "Comparando con el resultado vigente")
+    cambios = comparar_con_resultado_anterior(db, resultado_final)
+    if cambios is not None:
+        reportar(5, f"Cambios respecto del mapa vigente: {cambios['aptitud_suelo']} polígonos con otra aptitud de suelo, "
+                    f"{cambios['clasificacion']} con otra categoría")
     reportar(5, "Exportando resultados a la tabla mapa_aptitud_finalv2")
     db.guardar_resultado(resultado_final, nombre_tabla='mapa_aptitud_finalv2')
 
     tiempo_total = time.perf_counter() - tiempo_inicio
     print("PIPELINE FINALIZADO")
     print(f"MÉTRICA DE RENDIMIENTO: Tiempo total de procesamiento: {tiempo_total:.2f} segundos.")
-    return {"poligonos": int(len(resultado_final)), "duracion_seg": round(tiempo_total, 2)}
+    return {"poligonos": int(len(resultado_final)), "duracion_seg": round(tiempo_total, 2), "cambios": cambios}
 
 if __name__ == '__main__':
     ejecutar_pipeline()

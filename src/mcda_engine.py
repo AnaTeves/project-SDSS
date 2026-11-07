@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from src.parametros_edaficos import mapas_desde_bd
+from src.parametros_edaficos import mapas_desde_bd, normalizar_serie
 
 """
 Clase algorítmica encargada de la lógica matemática del modelo edáfico.
@@ -39,7 +39,7 @@ class MCDAEngine:
         
         # Normalización estricta de la variable para evitar fallas de coincidencia
         df_clean['Variable'] = df_clean['Variable'].astype(str).str.strip()
-        df_clean['Atributo del Suelo'] = df_clean['Atributo del Suelo'].astype(str).str.strip().str.lower()
+        df_clean['Atributo del Suelo'] = normalizar_serie(df_clean['Atributo del Suelo'])
         
         mapas = {}
         for var in self.pesos_suelo.keys():
@@ -70,7 +70,8 @@ class MCDAEngine:
                 raise KeyError(f"La columna requerida '{var}' no existe en el DataFrame de entrada")
             
             # Procesamiento y estandarización de strings
-            col_normalizada = df[var].fillna(valores_nulos[var]).astype(str).str.strip().str.lower()
+            # Misma normalización que la matriz: minúsculas, sin espacios extra ni aclaraciones entre paréntesis
+            col_normalizada = normalizar_serie(df[var].fillna(valores_nulos[var]))
             
             # Mapeo estricto. Si no está en el Excel (incluyendo los nulos si no fueron puntuados), devuelve 0.0
             valores_mapeados = col_normalizada.map(self.mapas[var]).fillna(0.0)
