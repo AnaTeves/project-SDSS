@@ -43,6 +43,15 @@ def aplicar_mascara_otbn(suelos_gdf, ruta_otbn, on_avance=None):
     if not os.path.exists(ruta_otbn):
         raise FileNotFoundError(f"No se encontró el ráster de la OTBN en: {ruta_otbn}")
 
+    # Si el .tif llegó como puntero de Git LFS (archivo de texto de ~130 bytes) en lugar del ráster real
+    if os.path.getsize(ruta_otbn) < 1024:
+        with open(ruta_otbn, 'rb') as f:
+            if f.read(64).startswith(b'version https://git-lfs'):
+                raise RuntimeError(
+                    "El ráster OTBN es un puntero de Git LFS, no el archivo real. "
+                    "El servidor no descargó los archivos LFS al desplegar."
+                )
+
     with rasterio.open(ruta_otbn) as raster:
         suelos_raster_crs = suelos_gdf.to_crs(raster.crs)
 
@@ -113,7 +122,7 @@ def ejecutar_pipeline(reportar=None):
 
     # ETAPA 2: Ejecuta la máscara de la OTBN sobre los polígonos importados.
     reportar(2, "Aplicando cruce espacial local con la capa legal de la OTBN")
-    ruta_otbn = os.path.join('assets', 'cat_otbn2.0.tif')
+    ruta_otbn = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'cat_otbn2.0.tif')
     suelos_gdf = aplicar_mascara_otbn(
         suelos_gdf,
         ruta_otbn,
