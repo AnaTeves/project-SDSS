@@ -28,7 +28,7 @@ async function registrarConsultaPoligono(idPoligono) {
     try {
         const { data: { session } } = await supabaseClient.auth.getSession();
         const email = session?.user?.email || 'anonimo';
-        const rol = session?.user ? 'admin' : 'visitante';
+        const rol = session?.user?.app_metadata?.role === 'admin' ? 'admin' : 'visitante';
 
         await supabaseClient
             .from('registros_acceso')
@@ -493,7 +493,8 @@ function construirMenuAdmin() {
 
 function actualizarInterfazUsuario(user) {
     const adminControls = document.getElementById("admin-controls") || construirMenuAdmin();
-    const esAdmin = !!user && (user.user_metadata?.role === 'admin');
+    // El rol se lee de app_metadata, que el usuario no puede modificar (el backend aplica la misma regla)
+    const esAdmin = !!user && (user.app_metadata?.role === 'admin');
 
     // Insignia: solo para visitantes; el administrador se identifica por su menú
     userBadge.textContent = "Modo: Visitante";

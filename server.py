@@ -114,11 +114,14 @@ def verificar_token_supabase(credentials: HTTPAuthorizationCredentials = Depends
         raise HTTPException(status_code=401, detail=f"No autorizado: {str(e)}")
 
 def verificar_admin(user=Depends(verificar_token_supabase)):
-    """Además de un token válido, exige que el usuario tenga rol 'admin'."""
+    """
+    Además de un token válido, exige que el usuario tenga rol 'admin' en app_metadata.
+    Se usa app_metadata (y no user_metadata) porque solo puede modificarse desde el panel de
+    Supabase o con la clave de servicio; user_metadata lo puede editar el propio usuario desde
+    el navegador con la clave pública, por lo que no sirve para autorizar.
+    """
     app_meta = getattr(user, "app_metadata", None) or {}
-    user_meta = getattr(user, "user_metadata", None) or {}
-    rol = app_meta.get("role") or user_meta.get("role")
-    if rol != "admin":
+    if app_meta.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Se requiere rol de administrador.")
     return user
 
