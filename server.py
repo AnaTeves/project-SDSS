@@ -3,15 +3,12 @@ import os
 import jwt
 from jwt import PyJWKClient
 from os import getenv
-import io
-import httpx
 import asyncio
 from fastapi import FastAPI, HTTPException, Response, BackgroundTasks, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
-from fpdf import FPDF
 import subprocess
 import threading
 import time
@@ -41,8 +38,6 @@ security = HTTPBearer()
 
 # Leer la URL desde la variable de entorno
 DATABASE_URL = os.getenv("DATABASE_URL")
-GRAFANA_BASE_URL = os.getenv("GRAFANA_BASE_URL", "https://grafana.net")
-GRAFANA_TOKEN = os.getenv("GRAFANA_API_TOKEN")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_URL = getenv("SUPABASE_URL")
 if not SUPABASE_URL or not SUPABASE_ANON_KEY:
@@ -62,8 +57,6 @@ app.add_middleware(
 # rear el motor de conexión
 engine = create_engine(DATABASE_URL)
 
-# Cliente HTTP global y asíncrono exclusivo para Grafana
-http_client = httpx.AsyncClient(timeout=20.0)
 
 etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
 
@@ -158,44 +151,6 @@ def tarea_etl_background():
         )
         # Esto garantiza que el servidor se desbloquee incluso si el modelo falla
         etl_en_progreso = False
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    # Asegura cerrar las conexiones HTTP al apagar el servidor de Render
-    await http_client.aclose()
-
-def safe_float(valor):
-    """Protege la serialización JSON contra valores nulos de la base de datos."""
-    if valor is None:
-        return 0.00
-    try:
-        return round(float(valor), 2)
-    except (ValueError, TypeError):
-        return 0.00
-
-def formatear_posgar(valor):
-    """Formatea números métricos con punto de miles y coma decimal (estándar español)."""
-    if valor is None:
-        return "N/A"
-    return f"{valor:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-# Función auxiliar asíncrona para descargar los paneles de Grafana
-async def descargar_panel_grafana(poligono_id: int, panel_id: int) -> bytes:
-    if not GRAFANA_TOKEN:
-        raise HTTPException(status_code=500, detail="GRAFANA_API_TOKEN no configurado en el servidor")
-        
-    headers = {"Authorization": f"Bearer {GRAFANA_TOKEN}"}
-    render_url = (
-        f"{GRAFANA_BASE_URL}/render/d-solo/lufz7hf/reporte-de-poligono"
-        f"?var-poligono_id={poligono_id}&panelId={panel_id}&width=700&height=350&theme=light"
-    )
-    try:
-        res = await http_client.get(render_url, headers=headers)
-        if res.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"Grafana Image Renderer devolvió error en panel {panel_id}")
-        return res.content
-    except httpx.RequestError:
-        raise HTTPException(status_code=504, detail=f"Timeout al conectar con Grafana para el panel {panel_id}")
 
 """
 Endpoint administrativo para disparar la actualización de datos (MCDA / ETL) por demanda.
@@ -299,34 +254,14 @@ def descargar_parametros_excel(admin_data=Depends(verificar_admin)):
         headers={"Content-Disposition": 'attachment; filename="edaphic-model-parameters-actualizado.xlsx"'},
     )
 
-"""
-Endpoint encargado de compilar los 3 paneles analíticos de Grafana para un polígono específico 
-en un único documento PDF optimizado en memoria RAM.
-"""
 @app.get("/api/v1/poligonos/{poligono_id}/reporte-pdf")
 async def descargar_reporte_pdf(poligono_id: int):
     """
-    Reporte técnico del polígono: georreferenciación (reproyección a POSGAR 98 faja 5), dictamen, desglose
-    del cálculo de cada variable, composición OTBN, censo forestal, paneles de Grafana y fuentes oficiales.
-    Los paneles de Grafana son opcionales: si el servicio no responde, el reporte se genera sin ellos.
+    Reporte técnico del polígono, generado en memoria: georreferenciación (reproyección a POSGAR 98 faja 5),
+    dictamen, desglose del cálculo de cada variable, composición OTBN, censo forestal y fuentes oficiales.
     """
-    paneles = []
-    titulos = [
-        (1, "Indicadores de aptitud edafoclimática y vigor vegetal"),
-        (5, "Criterios de viabilidad: biofísica, legalidad (OTBN) y cobertura"),
-        (3, "Trazabilidad del análisis espacial"),
-    ]
-    if GRAFANA_TOKEN:
-        resultados = await asyncio.gather(
-            *(descargar_panel_grafana(poligono_id, panel_id=i) for i, _ in titulos), return_exceptions=True)
-        for (_, titulo), res in zip(titulos, resultados):
-            if isinstance(res, (bytes, bytearray)):
-                paneles.append((titulo, res))
-            else:
-                print(f"Reporte PDF: panel de Grafana omitido ({titulo}): {res}")
-
     try:
-        contenido = await asyncio.to_thread(reporte_pdf.generar_reporte, engine, poligono_id, paneles)
+        contenido = await asyncio.to_thread(reporte_pdf.generar_reporte, engine, poligono_id)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generando el reporte PDF: {type(e).__name__}: {e}")
@@ -367,10 +302,6 @@ def obtener_aptitud_suelos():
         with engine.connect() as connection:
             result = connection.execute(text(query))
             features = []
-
-            """
-            safe_float: Cuenta con una función protectora que captura valores nulos o tipos de datos corruptos provenientes de la base de datos. Redondea automáticamente las métricas físicas y matemáticas a dos decimales, garantizando un payload JSON liviano y un parseo sin errores en el navegador.
-            """
             for row in result:
                 feature = {
                     "type": "Feature",

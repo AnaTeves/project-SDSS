@@ -450,69 +450,67 @@ if (btnLogout) {
 }
 
 // Actualizar Roles en Interfaz y habilitar vistas exclusivas
+function construirMenuAdmin() {
+    const cont = document.createElement("div");
+    cont.id = "admin-controls";
+    cont.className = "admin-menu hidden";
+    cont.innerHTML = `
+        <button id="admin-menu-toggle" class="admin-menu-toggle" type="button" aria-haspopup="true" aria-expanded="false">
+            <span class="admin-menu-icono">⚙️</span> Administración <span class="admin-menu-indicador" title="Reprocesando el modelo"></span><span class="admin-menu-flecha">▾</span>
+        </button>
+        <div id="admin-menu-lista" class="admin-menu-lista hidden" role="menu">
+            <div class="admin-menu-sesion">
+                <span>Sesión de administrador</span>
+                <b id="admin-menu-email"></b>
+            </div>
+            <button type="button" role="menuitem" id="btn-dashboard"><span>📊</span> Auditoría de consultas</button>
+            <button type="button" role="menuitem" id="btn-parametros"><span>🧪</span> Parámetros edáficos</button>
+            <button type="button" role="menuitem" id="btn-run-pipeline"><span>🔄</span> Reprocesar modelo</button>
+            <hr>
+            <button type="button" role="menuitem" id="btn-admin-logout" class="admin-menu-salir"><span>↩</span> Cerrar sesión</button>
+        </div>
+    `;
+    if (btnLogout && btnLogout.parentNode) btnLogout.parentNode.insertBefore(cont, btnLogout);
+
+    const toggle = cont.querySelector("#admin-menu-toggle");
+    const lista = cont.querySelector("#admin-menu-lista");
+    const cerrar = () => { lista.classList.add("hidden"); toggle.setAttribute("aria-expanded", "false"); };
+    toggle.addEventListener("click", e => {
+        e.stopPropagation();
+        const abrir = lista.classList.contains("hidden");
+        lista.classList.toggle("hidden", !abrir);
+        toggle.setAttribute("aria-expanded", String(abrir));
+    });
+    document.addEventListener("click", e => { if (!cont.contains(e.target)) cerrar(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") cerrar(); });
+    const accion = (id, fn) => cont.querySelector("#" + id).addEventListener("click", () => { cerrar(); fn(); });
+    accion("btn-dashboard", abrirPanelAuditoria);
+    accion("btn-parametros", abrirParametrosEdaficos);
+    accion("btn-run-pipeline", ejecutarPipelineRemoto);
+    accion("btn-admin-logout", () => btnLogout && btnLogout.click());
+    return cont;
+}
+
 function actualizarInterfazUsuario(user) {
-    let adminControls = document.getElementById("admin-controls");
-    if (!adminControls) {
-        adminControls = document.createElement("div");
-        adminControls.id = "admin-controls";
-        adminControls.className = "hidden"; // Oculto por defecto
-        adminControls.style.cssText = "display: none; align-items: center; gap: 8px; margin-right: 12px;";
-        adminControls.innerHTML = `
-            <button id="btn-dashboard" style="background:#1e293b; color:#fff; border:none; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; height:34px;">
-                📊 Panel
-            </button>
-            <button id="btn-parametros" style="background:#0f766e; color:#fff; border:none; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; height:34px;">
-                🧪 Parámetros edáficos
-            </button>
-            <button id="btn-run-pipeline" style="background:#2563eb; color:#fff; border:none; padding:7px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; height:34px;">
-                🔄 Reprocesar modelo
-            </button>
-        `;
+    const adminControls = document.getElementById("admin-controls") || construirMenuAdmin();
+    const esAdmin = !!user && (user.user_metadata?.role === 'admin');
 
-        if (btnLogout && btnLogout.parentNode) {
-            btnLogout.parentNode.insertBefore(adminControls, btnLogout);
-        }
+    // Insignia: solo para visitantes; el administrador se identifica por su menú
+    userBadge.textContent = "Modo: Visitante";
+    userBadge.classList.add("visitor");
+    userBadge.classList.remove("admin");
+    userBadge.classList.toggle("hidden", esAdmin);
 
-        // Listeners para los botones de administrador
-        document.getElementById("btn-dashboard").addEventListener("click", abrirPanelAuditoria);
-        document.getElementById("btn-run-pipeline").addEventListener("click", ejecutarPipelineRemoto);
-        document.getElementById("btn-parametros").addEventListener("click", abrirParametrosEdaficos);
+    adminControls.classList.toggle("hidden", !esAdmin);
+    if (esAdmin) {
+        document.getElementById("admin-menu-email").textContent = user.email || "";
+        // Si el pipeline ya estaba corriendo (p. ej. se recargó la página), retomamos el seguimiento
+        retomarPipelineSiCorre();
     }
 
-    if (user) {
-        const userRole = user.user_metadata?.role || 'visitante';
-
-        if (userRole === 'admin') {
-            userBadge.textContent = "Modo: Administrador";
-            userBadge.classList.add("admin");
-            userBadge.classList.remove("visitor");
-            adminControls.classList.remove("hidden");
-            adminControls.style.display = "inline-flex";
-            // Si el pipeline ya estaba corriendo (p. ej. se recargó la página), retomamos el seguimiento
-            retomarPipelineSiCorre();
-        } else {
-            userBadge.textContent = "Modo: Visitante";
-            userBadge.classList.add("visitor");
-            userBadge.classList.remove("admin");
-            adminControls.classList.add("hidden");
-            adminControls.style.display = "none";
-        }
-
-        if (btnLoginTrigger) btnLoginTrigger.classList.add("hidden");
-        if (btnLogout) btnLogout.classList.remove("hidden");
-    } else {
-        // Estado explícito al cerrar sesión
-        userBadge.textContent = "Modo: Visitante";
-        userBadge.classList.add("visitor");
-        userBadge.classList.remove("admin");
-        
-        if (btnLoginTrigger) btnLoginTrigger.classList.remove("hidden");
-        if (btnLogout) btnLogout.classList.add("hidden");
-        if (adminControls) {
-            adminControls.classList.add("hidden");
-            adminControls.style.display = "none";
-        }
-    }
+    if (btnLoginTrigger) btnLoginTrigger.classList.toggle("hidden", !!user);
+    // El administrador cierra sesión desde su menú; otros usuarios autenticados, con el botón
+    if (btnLogout) btnLogout.classList.toggle("hidden", !user || esAdmin);
 }
 
 // Verificar sesión existente al cargar la página o recargar estados
@@ -701,7 +699,9 @@ function marcarBotonPipeline(enCurso) {
     const btn = botonPipeline();
     if (!btn) return;
     btn.classList.toggle("running", enCurso);
-    btn.innerHTML = enCurso ? "⏳ Procesando… (ver)" : "🔄 Reprocesar modelo";
+    btn.innerHTML = enCurso ? "<span>⏳</span> Procesando… ver progreso" : "<span>🔄</span> Reprocesar modelo";
+    const toggle = document.getElementById("admin-menu-toggle");
+    if (toggle) toggle.classList.toggle("procesando", enCurso);
 }
 
 function mostrarModalPipeline(vista) {

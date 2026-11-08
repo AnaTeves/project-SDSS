@@ -3,14 +3,12 @@ Generación del reporte técnico PDF de un polígono (fpdf2).
 
 Reúne, para el polígono consultado:
   - identificación y georreferenciación (superficie y coordenadas obtenidas reproyectando la geometría
-    a POSGAR 98 / Argentina faja 5, EPSG:22175, en la vista `vista_metadatos_pdf`);
+    a POSGAR 98 / Argentina faja 5, EPSG:22175, con PostGIS);
   - el dictamen y el desglose paso a paso del cálculo de cada variable del modelo;
   - la composición OTBN y la regla de dominancia;
   - los registros del censo forestal dentro del polígono;
-  - los paneles gráficos de Grafana (si están disponibles);
   - las fuentes de datos oficiales utilizadas.
 """
-import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -187,7 +185,20 @@ def _leer_poligono(engine, poligono_id):
         if fila is None:
             return None, None, None
         fila = {k: v for k, v in dict(fila).items() if k != 'geom'}
-        meta = conn.execute(text('SELECT * FROM vista_metadatos_pdf WHERE id = :id'), {'id': poligono_id}).mappings().first()
+        # Georreferenciación calculada sobre la geometría: superficie y coordenadas planas reproyectando a
+        # POSGAR 98 / Argentina faja 5 (EPSG:22175); centroide y encuadre en WGS84 (EPSG:4326).
+        meta = conn.execute(text("""
+            SELECT ST_Area(ST_Transform(geom, 22175)) / 10000.0 AS superficie_ha,
+                   ST_Y(ST_Transform(ST_Centroid(geom), 4326)) AS lat_centro,
+                   ST_X(ST_Transform(ST_Centroid(geom), 4326)) AS lon_centro,
+                   ST_X(ST_Transform(ST_Centroid(geom), 22175)) AS x_posgar,
+                   ST_Y(ST_Transform(ST_Centroid(geom), 22175)) AS y_posgar,
+                   ST_YMin(ST_Transform(geom, 4326)) AS lat_min,
+                   ST_YMax(ST_Transform(geom, 4326)) AS lat_max,
+                   ST_XMin(ST_Transform(geom, 4326)) AS lon_min,
+                   ST_XMax(ST_Transform(geom, 4326)) AS lon_max
+            FROM mapa_aptitud_finalv2 WHERE id = :id
+        """), {'id': poligono_id}).mappings().first()
         meta = dict(meta) if meta else {}
         censo = None
         try:
@@ -212,8 +223,8 @@ def _pesos_macro():
         return PESOS_AHP_BASE, False
 
 
-def generar_reporte(engine, poligono_id, paneles=None):
-    """Devuelve los bytes del PDF, o None si el polígono no existe. `paneles` = [(titulo, png_bytes), ...]."""
+def generar_reporte(engine, poligono_id):
+    """Devuelve los bytes del PDF, o None si el polígono no existe."""
     fila, meta, censo = _leer_poligono(engine, poligono_id)
     if fila is None:
         return None
@@ -421,18 +432,8 @@ def generar_reporte(engine, poligono_id, paneles=None):
     else:
         pdf.parrafo('No fue posible consultar los registros del censo forestal para este polígono.', tam=8)
 
-    # ---------------------------------------------------------------- 5. paneles
-    if paneles:
-        pdf.titulo_seccion('5. Indicadores gráficos')
-        for titulo, imagen in paneles:
-            if pdf.get_y() > 190:
-                pdf.add_page()
-            pdf.subtitulo(titulo)
-            pdf.image(io.BytesIO(imagen), x=15, w=180)
-            pdf.ln(3)
-
-    # ---------------------------------------------------------------- 6. fuentes
-    pdf.titulo_seccion(f"{6 if paneles else 5}. Fuentes de datos oficiales")
+    # ---------------------------------------------------------------- 5. fuentes
+    pdf.titulo_seccion('5. Fuentes de datos oficiales')
     for nombre, detalle in FUENTES:
         if pdf.get_y() > 268:
             pdf.add_page()

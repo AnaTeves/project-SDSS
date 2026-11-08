@@ -335,7 +335,6 @@ body { margin: 0; padding: 0; background: #f4f6f8; }
 .pipeline-log-wrap summary { cursor: pointer; }
 .pipeline-log { background: #0f172a; color: #e2e8f0; font-family: ui-monospace, Consolas, monospace; font-size: 0.72rem; padding: 10px; border-radius: 8px; max-height: 160px; overflow-y: auto; white-space: pre-wrap; margin: 8px 0 0; }
 
-#btn-run-pipeline.running { background: #f59e0b !important; }
 #btn-run-pipeline:disabled { opacity: 0.6; cursor: not-allowed; }
 
 
@@ -447,3 +446,27 @@ body { margin: 0; padding: 0; background: #f4f6f8; }
 .auditoria-barra { display: flex; align-items: center; gap: 6px; min-width: 120px; }
 .auditoria-barra span { height: 8px; background: #2563eb; border-radius: 4px; min-width: 4px; }
 .auditoria-ver { padding: 4px 10px !important; font-size: 0.75rem !important; }
+
+
+/* ==========================================
+   Menú de administración (barra superior)
+   ========================================== */
+.admin-menu { position: relative; }
+.admin-menu-toggle { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; background: #1e293b; color: #fff; border: none; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+.admin-menu-toggle:hover, .admin-menu-toggle[aria-expanded="true"] { background: #0f172a; }
+.admin-menu-flecha { font-size: 0.7rem; opacity: 0.8; }
+.admin-menu-indicador { display: none; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.3); animation: admin-pulso 1.4s ease-in-out infinite; }
+.admin-menu-toggle.procesando .admin-menu-indicador { display: inline-block; }
+@keyframes admin-pulso { 50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); } }
+.admin-menu-lista { position: absolute; right: 0; top: calc(100% + 8px); min-width: 250px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18); padding: 6px; z-index: 1500; display: flex; flex-direction: column; }
+.admin-menu-lista.hidden { display: none !important; }
+.admin-menu-sesion { padding: 8px 10px 10px; border-bottom: 1px solid #f1f5f9; margin-bottom: 4px; display: flex; flex-direction: column; gap: 2px; }
+.admin-menu-sesion span { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.4px; }
+.admin-menu-sesion b { font-size: 0.82rem; color: #0f172a; word-break: break-all; }
+.admin-menu-lista button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: none; padding: 9px 10px; border-radius: 6px; font-size: 0.85rem; color: #1e293b; cursor: pointer; }
+.admin-menu-lista button:hover, .admin-menu-lista button:focus-visible { background: #f1f5f9; outline: none; }
+.admin-menu-lista button span { width: 18px; text-align: center; }
+.admin-menu-lista button.running { color: #b45309; font-weight: 600; }
+.admin-menu-lista hr { border: none; border-top: 1px solid #f1f5f9; margin: 4px 0; }
+.admin-menu-salir { color: #b91c1c !important; }
+.top-bar { z-index: 1100; } /* el menú de administración debe quedar sobre el panel lateral */
