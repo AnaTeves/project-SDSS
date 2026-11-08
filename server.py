@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from main import ejecutar_pipeline, ETAPAS_PIPELINE
 from pydantic import BaseModel, Field
 from typing import List
-from src import parametros_edaficos
+from src import parametros_edaficos, reporte_pdf
 from supabase import create_client, Client
 
 # Cargar variables de entorno desde el archivo .env
@@ -305,191 +305,37 @@ en un único documento PDF optimizado en memoria RAM.
 """
 @app.get("/api/v1/poligonos/{poligono_id}/reporte-pdf")
 async def descargar_reporte_pdf(poligono_id: int):
-    query_meta = text("""
-        SELECT 
-            m.id, 
-            m.sgrup_sue1 AS subgrupo, 
-            m.text_sups1 AS textura,
-            m.clasificacion_final,
-            m.aptitud_final,
-            v.superficie_ha, 
-            v.lat_centro, 
-            v.lon_centro, 
-            v.x_posgar, 
-            v.y_posgar, 
-            v.lat_min, 
-            v.lat_max, 
-            v.lon_min, 
-            v.lon_max 
-        FROM mapa_aptitud_finalv2 m
-        JOIN vista_metadatos_pdf v ON m.id = v.id
-        WHERE m.id = :id;
-    """)
-    
+    """
+    Reporte técnico del polígono: georreferenciación (reproyección a POSGAR 98 faja 5), dictamen, desglose
+    del cálculo de cada variable, composición OTBN, censo forestal, paneles de Grafana y fuentes oficiales.
+    Los paneles de Grafana son opcionales: si el servicio no responde, el reporte se genera sin ellos.
+    """
+    paneles = []
+    titulos = [
+        (1, "Indicadores de aptitud edafoclimática y vigor vegetal"),
+        (5, "Criterios de viabilidad: biofísica, legalidad (OTBN) y cobertura"),
+        (3, "Trazabilidad del análisis espacial"),
+    ]
+    if GRAFANA_TOKEN:
+        resultados = await asyncio.gather(
+            *(descargar_panel_grafana(poligono_id, panel_id=i) for i, _ in titulos), return_exceptions=True)
+        for (_, titulo), res in zip(titulos, resultados):
+            if isinstance(res, (bytes, bytearray)):
+                paneles.append((titulo, res))
+            else:
+                print(f"Reporte PDF: panel de Grafana omitido ({titulo}): {res}")
+
     try:
-        with engine.connect() as connection:
-            res_meta = connection.execute(query_meta, {"id": poligono_id}).fetchone()
+        contenido = await asyncio.to_thread(reporte_pdf.generar_reporte, engine, poligono_id, paneles)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error consultando metadatos en la BD: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error generando el reporte PDF: {type(e).__name__}: {e}")
+    if contenido is None:
+        raise HTTPException(status_code=404, detail=f"No se encontró el polígono ID {poligono_id}")
 
-    if not res_meta:
-        raise HTTPException(status_code=404, detail=f"No se encontraron metadatos para el polígono ID {poligono_id}")
-    
-    # Descargar los 3 paneles en paralelo usando asyncio.gather para máxima velocidad
-    try:
-        foto_panel_1, foto_panel_2, foto_panel_3= await asyncio.gather(
-            descargar_panel_grafana(poligono_id, panel_id=1),
-            descargar_panel_grafana(poligono_id, panel_id=3),
-            descargar_panel_grafana(poligono_id, panel_id=5)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error obteniendo reportes visuales: {str(e)}")
-
-    # Construcción del documento PDF mediante fpdf2
-    pdf = FPDF()
-    
-    # --- PÁGINA 1 ---
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 15, f"Reporte de Aptitud Forestal - Polígono #{poligono_id}", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(2)
-
-    # --- TARJETA DE METADATOS DE GEORREFERENCIACIÓN ---
-    start_y = pdf.get_y()
-    pdf.set_fill_color(245, 247, 250)
-    pdf.set_draw_color(200, 205, 215)
-    
-    # Recuadro contenedor de la tarjeta
-    pdf.rect(15, start_y, 180, 28, style="DF")
-    
-    # Formatear valores
-    sup_ha = safe_float(res_meta.superficie_ha)
-    subgrupo = res_meta.subgrupo if res_meta.subgrupo else "No especificado"
-    textura = res_meta.textura if res_meta.textura else "No especificada"
-    lat_c = safe_float(res_meta.lat_centro)
-    lon_c = safe_float(res_meta.lon_centro)
-    x_pos = formatear_posgar(res_meta.x_posgar)
-    y_pos = formatear_posgar(res_meta.y_posgar)
-    bbox_str = f"N: {safe_float(res_meta.lat_max)}° | S: {safe_float(res_meta.lat_min)}° | E: {safe_float(res_meta.lon_max)}° | O: {safe_float(res_meta.lon_min)}°"
-
-    # Fila 1: ID y Superficie
-    pdf.set_xy(18, start_y + 2.5)
-    pdf.set_font("Helvetica", "B", 8.5)
-    pdf.cell(85, 4.5, f"Polígono ID: #{poligono_id}", new_x="RIGHT", new_y="TOP")
-    pdf.cell(85, 4.5, f"Superficie Total: {sup_ha} ha", new_x="LMARGIN", new_y="NEXT")
-    
-    # Fila 2: Atributos del suelo
-    pdf.set_x(18)
-    pdf.cell(85, 4.5, f"Subgrupo de Suelo: {subgrupo}", new_x="RIGHT", new_y="TOP")
-    pdf.cell(85, 4.5, f"Textura Superficial: {textura}", new_x="LMARGIN", new_y="NEXT")
-
-    # Fila 3: Coordenadas
-    pdf.set_x(18)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.cell(85, 4.5, f"Centroide WGS84: {lat_c}° S, {lon_c}° O", new_x="RIGHT", new_y="TOP")
-    pdf.cell(85, 4.5, f"Sistema Oficial: POSGAR 98 / Arg 5 (EPSG:22175)", new_x="LMARGIN", new_y="NEXT")
-    
-    # Fila 4: POSGAR X / Y
-    pdf.set_x(18)
-    pdf.cell(85, 4.5, f"POSGAR X (Este): {x_pos} m", new_x="RIGHT", new_y="TOP")
-    pdf.cell(85, 4.5, f"POSGAR Y (Norte): {y_pos} m", new_x="LMARGIN", new_y="NEXT")
-    
-    # Fila 5: Bounding Box
-    pdf.set_x(18)
-    pdf.set_font("Helvetica", "I", 7.5)
-    pdf.cell(170, 4.5, f"Encuadre (Bounding Box WGS84): {bbox_str}", new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_y(start_y + 36)
-
-    # --- RECUADRO DE DICTAMEN DE APTITUD (APTO / NO APTO) ---
-    clasificacion_raw = str(res_meta.clasificacion_final or "").strip().lower()
-    es_apto = "apto" in clasificacion_raw and "no" not in clasificacion_raw
-
-    banner_y = pdf.get_y()
-    if es_apto:
-        pdf.set_fill_color(235, 247, 238)  # Verde suave
-        pdf.set_draw_color(46, 125, 50)    # Verde bordes
-        pdf.set_text_color(27, 94, 32)     # Verde texto
-        titulo_dictamen = "DICTAMEN: POLÍGONO HABILITADO / APTO PARA REFORESTACIÓN"
-        desc_dictamen = (
-            "El predio analizado cumple satisfactoriamente con la aptitud edafoclimática requerida, "
-            "la normativa legal de la OTBN (Ley 26.331) y la compatibilidad de uso del suelo."
-        )
-    else:
-        pdf.set_fill_color(253, 237, 237)  # Rojo suave
-        pdf.set_draw_color(198, 40, 40)    # Rojo bordes
-        pdf.set_text_color(183, 28, 28)    # Rojo texto
-        titulo_dictamen = "DICTAMEN: POLÍGONO NO APTO / RESTRINGIDO"
-        desc_dictamen = (
-            "El predio presenta restricciones ambientales o legales (descalificación por OTBN o "
-            "cobertura de suelo incompatible) que impiden la práctica de reforestación de Quebracho Colorado."
-        )
-
-    pdf.rect(15, banner_y, 180, 16, style="DF")
-    pdf.set_xy(18, banner_y + 2)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(174, 4, titulo_dictamen, new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_x(18)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.multi_cell(174, 3.5, desc_dictamen, new_x="LMARGIN", new_y="NEXT")
-    
-    # Restablecer color de texto a negro por defecto
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_y(banner_y + 19)
-
-    # PRIMER IMAGEN: Panel de Aptitud Edafoclimática y Vigor Vegetal
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 10, "1. Indicadores de aptitud edafoclimática y vigor vegetal", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
-
-    pdf.set_font("Helvetica", "", 9)
-    texto = (
-        "Este análisis sintetiza las tres variables biofísicas primarias del territorio en una escala "
-        "normalizada de 0.00 a 1.00: (a) Aptitud del suelo, calculada mediante evaluación multicriterio (MCDA) "
-        "sobre textura (35%), subgrupo (25%), drenaje (25%) y alcalinidad (15%); (b) Lluvia normalizada, "
-        "mediante función borrosa trapezoidal basada en el rango óptimo de 900 a 1500 mm/año; y (c) NDVI normalizado, "
-        "que estandariza la biomasa vegetativa a partir de series temporales satelitales."
-        )
-    pdf.multi_cell(0, 4, texto, new_x="LMARGIN", new_y="NEXT", align="J") 
-    pdf.ln(2)
-    pdf.image(io.BytesIO(foto_panel_1), x=15, w=180)
-
-    # --- PÁGINA 2 ---
-    pdf.add_page()
-    # SEGUNDA IMAGEN: Criterios de viabilidad: Biofísica, Legalidad (OTBN) y Cobertura
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 10, "2. Criterios de viabilidad: Biofísica, Legalidad (OTBN) y Cobertura", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
-    
-    pdf.set_font("Helvetica", "", 9)
-    texto = (
-        "El dictamen final del territorio integra tres filtros independientes: "
-        "(1) Aptitud Biofísica Base, que mide la calidad edafoclimática (0-100%); "
-        "(2) Cobertura Legal OTBN, que exige un cumplimiento mínimo del 98% bajo la Ley N° 26.331; y "
-        "(3) Compatibilidad de Uso de Suelo (MapBiomas), que actúa como filtro binario (100% idóneo, "
-        "0% si solapa con áreas urbanas, agua o usos excluidos). Un polígono es habilitado únicamente "
-        "si aprueba los tres criterios en simultáneo."
-            )
-    pdf.multi_cell(0, 4, texto, new_x="LMARGIN", new_y="NEXT", align="J") 
-    pdf.ln(2)
-    pdf.image(io.BytesIO(foto_panel_3), x=15, w=180)
-    pdf.ln(4)
-
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 10, "3. Trazabilidad del Análisis Espacial", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
-
-    pdf.image(io.BytesIO(foto_panel_2), x=15, w=180)
-    pdf.ln(4)
-
-    # Exportación del buffer binario directo al navegador del usuario
-    pdf_output = bytes(pdf.output())
-    
-    headers_resp = {
+    return Response(content=contenido, media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="Reporte_Aptitud_Poligono_{poligono_id}.pdf"'
-    }
-    return Response(content=pdf_output, media_type="application/pdf", headers=headers_resp)
+    })
 
 """
 Formatea y consolida los 429 polígonos del territorio evaluado bajo la estructura estándar de una `FeatureCollection` geoespacial, inyectando todas las sub-aptitudes calculadas, variables edáficas primarias y el dictamen legal (OTBN) dentro del bloque de `properties` de cada elemento.

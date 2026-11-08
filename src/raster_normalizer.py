@@ -11,7 +11,7 @@ class RasterNormalizer:
         self, 
         clases_excluidas=None, 
         umbrales_ndvi=(0.10, 0.80),
-        umbrales_lluvia=(400.0, 900.0, 1500.0, 2500.0)
+        umbrales_lluvia=(700.0, 900.0, 1500.0, 2500.0)
     ):
         """
         Motor de normalización y fuzzificación de variables ambientales.
@@ -20,6 +20,13 @@ class RasterNormalizer:
         self.clases_excluidas = clases_excluidas or [6, 9, 11, 14, 18, 19, 22, 23, 24, 25, 26, 27, 36, 57, 58, 61]
         
         # Umbrales configurables
+        # Precipitación (mm/año): (mínimo, inicio del óptimo, fin del óptimo, máximo).
+        # El mínimo se fijó en 700 mm (antes 400 mm). S. balansae se distribuye principalmente en el
+        # Chaco Húmedo, con ocurrencias fragmentadas en el Chaco Seco (De Diego, 2025); el Distrito
+        # Chaqueño Occidental, dominio de S. lorentzii, recibe entre 500 y 800 mm (Arambarri et al., 2011,
+        # siguiendo a Cabrera), y en la transición de 800-850 mm ambas especies conviven con predominio de
+        # S. balansae (Michela y Juárez de Galíndez, 2016). Con 400 mm, casi todo el oeste chaqueño
+        # resultaba apto. La rampa 700-900 mm asigna aptitud parcial a la transición (800 mm -> 0.5).
         self.ndvi_min, self.ndvi_max = umbrales_ndvi
         self.p_min, self.p_opt_inf, self.p_opt_sup, self.p_max = umbrales_lluvia
 
@@ -71,4 +78,4 @@ class RasterNormalizer:
             return pd.Series(False, index=df.index)
         
         es_excluido = df['val_uso_suelo'].isin(self.clases_excluidas) | df['val_uso_suelo'].isna()
-        return es_excluido
+        return es_excluido

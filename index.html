@@ -289,7 +289,7 @@
                         <h4>Cómo se calcula el puntaje</h4>
                         <ul>
                             <li><b>Aptitud del suelo:</b> combina textura (35 %), subgrupo (25 %), drenaje (25 %) y alcalinidad (15 %) de la carta de suelos, según una matriz de puntajes basada en la literatura sobre la especie.</li>
-                            <li><b>Aptitud de la lluvia:</b> es máxima entre 900 y 1500 mm anuales y disminuye hasta anularse por debajo de 400 mm o por encima de 2500 mm.</li>
+                            <li><b>Aptitud de la lluvia:</b> es máxima entre 900 y 1500 mm anuales, disminuye linealmente por debajo de 900 mm y se anula por debajo de 700 mm, límite que separa el área de la especie del Chaco seco occidental, dominado por el quebracho colorado santiagueño (<i>Schinopsis lorentzii</i>).</li>
                             <li><b>Aptitud del NDVI:</b> mide el vigor de la vegetación histórica entre 0.10 y 0.80.</li>
                             <li><b>Puntaje biofísico:</b> suelo 40 %, lluvia 40 % y NDVI 20 %. Si la aptitud del suelo es 0.40 o menor, el puntaje se anula, porque un buen clima no compensa un suelo inadecuado. Un polígono se considera apto cuando su puntaje biofísico es 0.60 o mayor.</li>
                         </ul>
@@ -297,7 +297,14 @@
 
                     <section id="guia-pdf">
                         <h4>Reporte técnico PDF</h4>
-                        <p>El botón <b>«Generar reporte técnico (PDF)»</b> del panel descarga un informe del polígono con su ubicación (centroide, coordenadas POSGAR y encuadre), sus atributos de suelo, el dictamen de aptitud y gráficos con los indicadores biofísicos, legales y de cobertura. La generación puede tardar unos segundos.</p>
+                        <p>El botón <b>«Generar reporte técnico (PDF)»</b> del panel descarga un informe del polígono con:</p>
+                        <ul>
+                            <li><b>Identificación y georreferenciación:</b> superficie en hectáreas y coordenadas planas calculadas en el sistema oficial POSGAR 98 / Argentina faja 5, centroide y encuadre en coordenadas geográficas.</li>
+                            <li><b>Dictamen</b> con la categoría asignada y su recomendación.</li>
+                            <li><b>Desglose del cálculo:</b> los atributos de suelo con su puntaje, peso y aporte; la precipitación en mm y el NDVI con la fórmula aplicada; la combinación ponderada; la cobertura de MapBiomas y la composición OTBN con la regla de dominancia.</li>
+                            <li><b>Registros del censo forestal</b> dentro del polígono, gráficos de indicadores y las <b>fuentes de datos oficiales</b> utilizadas.</li>
+                        </ul>
+                        <p>La generación puede tardar unos segundos.</p>
                     </section>
 
                     <section id="guia-alcance">

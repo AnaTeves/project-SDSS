@@ -24,7 +24,7 @@ class MCDAEngine:
         mapas_bd = mapas_desde_bd(engine, list(self.pesos_suelo.keys()))
         if mapas_bd is not None:
             self.mapas = mapas_bd
-            self.fuente_parametros = 'base de datos (parametros_edaficos)'
+            self.fuente_parametros = 'base de datos, tabla parametros_edaficos'
         else:
             self.mapas = self._cargar_parametros_excel(excel_path)
             self.fuente_parametros = f'Excel ({excel_path})'
