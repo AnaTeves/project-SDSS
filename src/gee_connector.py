@@ -108,6 +108,14 @@ def cargar_credenciales_gee(key_file='config/credentials.json'):
 ASSET_MAPBIOMAS = 'projects/mapbiomas-public/assets/chaco/lulc/collection5/mapbiomas_chaco_collection5_integration_v2'
 
 
+def clase_predominante(histograma):
+    """Código con más píxeles en un histograma de Earth Engine; None si está vacío."""
+    if not isinstance(histograma, dict) or not histograma:
+        return None
+    codigo, _ = max(histograma.items(), key=lambda kv: kv[1])
+    return int(float(codigo))
+
+
 def imagen_uso_mapbiomas():
     imagen = ee.Image(ASSET_MAPBIOMAS)
     return imagen.select([ee.String(imagen.bandNames().get(-1))])
@@ -163,10 +171,13 @@ class GEEConnector:
             scale=30
         )
         
-        # Reducción 2: Mayoría (Mode) para Uso de Suelo
+        # Reducción 2: histograma de frecuencias exacto para el Uso de Suelo.
+        # No se usa ee.Reducer.mode(): con polígonos de millones de píxeles agrupa los valores en
+        # intervalos y devuelve códigos inexistentes en la leyenda (p. ej. 2 en lugar de 3, 56 en lugar
+        # de 57). La clase predominante se obtiene luego, en Python, del histograma exacto.
         fc_categorica = capa_categorica.reduceRegions(
             collection=fc,
-            reducer=ee.Reducer.mode(),
+            reducer=ee.Reducer.frequencyHistogram(),
             scale=30
         )
 
@@ -182,9 +193,8 @@ class GEEConnector:
         except Exception as e:
             raise ConnectionError(f"Error al obtener datos de Earth Engine: {e}")
 
-        # Renombrar la columna de la moda de MapBiomas para mantener consistencia
-        if 'mode' in df_cat.columns:
-            df_cat.rename(columns={'mode': 'val_uso_suelo'}, inplace=True)
+        # Clase predominante (moda exacta) a partir del histograma {código: píxeles}
+        df_cat['val_uso_suelo'] = df_cat['histogram'].apply(clase_predominante) if 'histogram' in df_cat.columns else None
 
         # Fusión (Join) segura usando id
         df_metrics = pd.merge(
