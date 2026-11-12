@@ -82,7 +82,7 @@ function obtenerColor(clasificacion) {
 
 function estiloFeature(feature) {
     return {
-        fillColor: obtenerColor(feature.properties.clasificacion_final),
+        fillColor: VISTAS[vistaActual].color(feature.properties),
         weight: 1.2,
         opacity: 1,
         color: '#ffffff',
@@ -106,88 +106,160 @@ function resaltarPoligono(layer) {
     layer.bringToFront();
 }
 
+// ==========================================
+// VISTAS DEL MAPA: recomendación final, idoneidad biofísica y zonificación OTBN
+// ==========================================
+// Mismas reglas que el modelo (reforestacion_pipeline.py y validacion_censo.py)
+function esAptoBiofisico(p) {
+    return (p.aptitud_biofisica || 0) >= 0.60 && (p.aptitud_suelo || 0) > 0.40;
+}
+function claseFAO(p) {
+    const a = p.aptitud_biofisica || 0;
+    if ((p.aptitud_suelo || 0) <= 0.40 || a < 0.40) return 'N';
+    if (a < 0.60) return 'S3';
+    if (a < 0.80) return 'S2';
+    return 'S1';
+}
+function composicionOTBN(p) {
+    const rojo = p.pct_rojo || 0, amarillo = p.pct_amarillo || 0, verde = p.pct_verde || 0;
+    const libre = Math.max(0, 100 - rojo - amarillo - verde);
+    return { rojo, amarillo, verde, libre };
+}
+// Zona que define el tipo de intervención (regla del modelo: verde si no dominan roja ni amarilla)
+function zonaModelo(p) {
+    const c = composicionOTBN(p);
+    if (c.rojo > c.amarillo && c.rojo > c.verde) return 'roja';
+    if (c.amarillo > c.rojo && c.amarillo > c.verde) return 'amarilla';
+    return 'verde';
+}
+// Zona con mayor superficie, distinguiendo la superficie sin bosque nativo categorizado (vista OTBN)
+function zonaMayoritaria(p) {
+    const c = composicionOTBN(p);
+    return Object.entries({ roja: c.rojo, amarilla: c.amarillo, verde: c.verde, libre: c.libre })
+        .sort((a, b) => b[1] - a[1])[0][0];
+}
+
+const FAO = {
+    S1: { color: '#1e3a8a', nombre: 'Óptima (S1)', detalle: 'aptitud biofísica ≥ 0.80' },
+    S2: { color: '#3b82f6', nombre: 'Moderada (S2)', detalle: '0.60 a 0.80 · apta' },
+    S3: { color: '#93c5fd', nombre: 'Marginal (S3)', detalle: '0.40 a 0.60 · no alcanza el umbral' },
+    N:  { color: '#e2e8f0', nombre: 'No apta (N)', detalle: 'menor a 0.40 o suelo restrictivo' },
+};
+const ZONAS_OTBN = {
+    roja:     { color: '#dc2626', nombre: 'Zona roja (categoría I)', detalle: 'muy alto valor de conservación' },
+    amarilla: { color: '#facc15', nombre: 'Zona amarilla (categoría II)', detalle: 'mediano valor de conservación' },
+    verde:    { color: '#16a34a', nombre: 'Zona verde (categoría III)', detalle: 'bajo valor de conservación' },
+    libre:    { color: '#f5f5f4', nombre: 'Sin bosque nativo categorizado', detalle: 'fuera de las categorías de la OTBN' },
+};
+
+const VISTAS = {
+    final: {
+        titulo: 'Recomendación final',
+        descripcion: 'Combina la idoneidad biofísica, la cobertura actual y la zonificación OTBN.',
+        color: p => obtenerColor(p.clasificacion_final),
+        leyenda: () => [
+            ['#22c55e', 'Apto · reforestación productiva (zona verde)'],
+            ['#eab308', 'Apto · enriquecimiento sostenible (zona amarilla)'],
+            ['#ef4444', 'Apto · prioridad restauración (zona roja)'],
+            ['#6b7280', 'No apto · uso del suelo excluido'],
+            ['#1e293b', 'No apto biofísicamente'],
+        ],
+    },
+    biofisica: {
+        titulo: 'Idoneidad biofísica',
+        descripcion: 'Calculada por el modelo a partir de suelo, lluvia y NDVI. No considera la normativa.',
+        color: p => FAO[claseFAO(p)].color,
+        leyenda: () => Object.values(FAO).map(c => [c.color, `${c.nombre}: ${c.detalle}`]),
+    },
+    otbn: {
+        titulo: 'Zonificación OTBN',
+        descripcion: 'Restricción normativa (Ley 26.331). Cada polígono toma el color de la zona con mayor superficie.',
+        color: p => ZONAS_OTBN[zonaMayoritaria(p)].color,
+        leyenda: () => Object.values(ZONAS_OTBN).map(z => [z.color, `${z.nombre}: ${z.detalle}`]),
+    },
+};
+let vistaActual = 'final';
+
+function dibujarLeyendaVista() {
+    const v = VISTAS[vistaActual];
+    document.querySelectorAll('.vista-btn').forEach(b => b.classList.toggle('activo', b.dataset.vista === vistaActual));
+    document.getElementById('leyenda-vista').innerHTML = `
+        <p class="vista-descripcion">${v.descripcion}</p>
+        ${v.leyenda().map(([color, texto]) => `
+            <div class="legend-item"><div class="legend-color" style="background:${color};"></div> ${texto}</div>`).join('')}`;
+}
+
+function cambiarVista(vista) {
+    vistaActual = vista;
+    dibujarLeyendaVista();
+    if (geojsonLayer) geojsonLayer.eachLayer(l => {
+        l.setStyle(estiloFeature(l.feature));
+        if (l === capaSeleccionada) resaltarPoligono(l);
+    });
+}
+
+// ==========================================
+// PANEL DE DIAGNÓSTICO
+// ==========================================
+const RECOMENDACIONES = {
+    roja: { clase: 'restoration', icono: '🔴', titulo: 'Restauración ecológica',
+            texto: 'La mayor superficie del polígono corresponde a zona roja. Solo admite proyectos de restauración y preservación, sin alterar la estructura del bosque circundante.' },
+    amarilla: { clase: 'warning', icono: '🟨', titulo: 'Enriquecimiento sostenible',
+            texto: 'La mayor superficie corresponde a zona amarilla. Admite plantar quebracho en parches degradados, abrir líneas de enriquecimiento o clausurar sectores para proteger a los plantines del ganado, sin desmonte.' },
+    verde: { clase: 'pass', icono: '🟩', titulo: 'Reforestación productiva',
+            texto: 'Predomina la zona verde o la superficie sin bosque nativo categorizado. Idóneo para plantaciones en bloque o cortinas forestales de quebracho colorado.' },
+};
+
+// Cadena de decisión: 1) idoneidad biofísica → 2) cobertura actual → 3) zonificación OTBN
+function textoZona(props) {
+    const zona = zonaModelo(props), comp = composicionOTBN(props);
+    if (zona === 'verde' && comp.verde < comp.libre) return 'predomina la superficie sin bosque nativo categorizado';
+    return `domina la zona ${zona}`;
+}
+
 function generarDiagnostico(props) {
-    const pRojo = props.pct_rojo || 0;
-    const pAmarillo = props.pct_amarillo || 0;
-    const pVerde = props.pct_verde || 0;
-    
-    // Cálculo de Zona Libre
-    const sumaOtbn = pRojo + pAmarillo + pVerde;
-    const pLibre = (sumaOtbn >= 100) ? 0 : parseFloat((100 - sumaOtbn).toFixed(1));
-    const pVerdeTotal = pVerde;
+    const apto = esAptoBiofisico(props);
+    const fao = FAO[claseFAO(props)];
+    const excluido = (props.clasificacion_final || '').includes('excluido');
+    const zona = zonaModelo(props);
 
-    // Determinación de la categoría dominante real según los porcentajes
-    const dominaRojo = (pRojo > pAmarillo) && (pRojo > pVerdeTotal);
-    const dominaAmarillo = (pAmarillo > pRojo) && (pAmarillo > pVerdeTotal);
+    const paso = (estado, etiqueta, valor) => `
+        <li class="paso ${estado}"><span class="paso-icono">${estado === 'ok' ? '✓' : estado === 'no' ? '✕' : '–'}</span>
+            <span><b>${etiqueta}</b> ${valor}</span></li>`;
 
-    // Construcción dinámica de la lista de porcentajes
-    let listaComposicion = [];
-    if (pRojo > 0) listaComposicion.push(`<span>🟥 <b>Zona Roja (Restauración):</b> ${pRojo.toFixed(1)}%</span>`);
-    if (pAmarillo > 0) listaComposicion.push(`<span>🟨 <b>Zona Amarilla (Manejo):</b> ${pAmarillo.toFixed(1)}%</span>`);
-    if (pVerde > 0) listaComposicion.push(`<span>🟩 <b>Zona Verde (Productiva):</b> ${pVerde.toFixed(1)}%</span>`);
-    if (pLibre > 0) listaComposicion.push(`<span>⬜ <b>Zona Libre (Agrícola/Otros):</b> ${pLibre}%</span>`);
+    const pasos = [
+        paso(apto ? 'ok' : 'no', 'Idoneidad biofísica (modelo):',
+             `${apto ? 'apta' : 'no apta'} · ${fao.nombre}, ${(props.aptitud_biofisica || 0).toFixed(2)}`),
+        apto ? paso(excluido ? 'no' : 'ok', 'Cobertura actual (MapBiomas):',
+                    excluido ? `excluida${props.uso_nombre ? ' · ' + escHTML(props.uso_nombre) : ''}` : `compatible${props.uso_nombre ? ' · ' + escHTML(props.uso_nombre) : ''}`)
+             : paso('na', 'Cobertura actual (MapBiomas):', 'no se evalúa'),
+        apto && !excluido ? paso('ok', 'Zonificación OTBN (normativa):', textoZona(props))
+             : paso('na', 'Zonificación OTBN (normativa):', 'no define intervención'),
+    ].join('');
 
-    const htmlComposicion = `
-        <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,0.1); font-size: 11px; display: flex; flex-direction: column; gap: 2px;">
-            <b>Composición del polígono: <a href="#" class="ayuda-link" onclick="abrirGuia('composicion'); return false;" title="¿Cómo se calcula?">¿qué es esto?</a></b>
-            ${listaComposicion.join('')}
-        </div>`;
-
-    const esUsoExcluido = props.clasificacion_final.includes('Uso excluido') || props.clasificacion_final.includes('excluido');
-    const esBajaAptitud = props.aptitud_biofisica <= 0.60 || props.aptitud_suelo <= 0.40;
-
-    // 1. Caso No Apto (Filtro Biofísico / MapBiomas)
-    if (esBajaAptitud || esUsoExcluido) {
-        let motivos = [];
-        if (esBajaAptitud) motivos.push(`<b>Baja aptitud edafoclimática:</b> Puntaje biofísico insuficiente (${(props.aptitud_biofisica || 0).toFixed(2)}).`);
-        if (esUsoExcluido) motivos.push(`<b>Uso de suelo no permitido (MapBiomas):</b> Cobertura no idónea.`);
-
-        return `
-            <div class="diagnostic-box fail" style="background:#f3f4f6; border: 1px solid #d1d5db; padding: 10px; border-radius: 6px;">
-                <b style="color:#374151;">⚪ Terreno no apto</b>
-                <ul style="margin: 5px 0 0; padding-left: 15px; font-size: 11px; color: #4b5563;">
-                    ${motivos.map(m => `<li>${m}</li>`).join('')}
-                </ul>
-                ${htmlComposicion}
-            </div>`;
+    let resultado;
+    if (!apto) {
+        const motivos = [];
+        if ((props.aptitud_suelo || 0) <= 0.40) motivos.push('el suelo es severamente restrictivo (aptitud del suelo ≤ 0.40)');
+        else motivos.push(`la aptitud biofísica (${(props.aptitud_biofisica || 0).toFixed(2)}) no alcanza el mínimo de 0.60`);
+        resultado = `<div class="diagnostic-box fail"><b>⚪ Terreno no apto</b><p>Las condiciones de suelo, lluvia y vegetación no son suficientes: ${motivos.join('; ')}.</p></div>`;
+    } else if (excluido) {
+        resultado = `<div class="diagnostic-box fail"><b>⚪ No apto por uso del suelo</b><p>El suelo y el clima serían aptos, pero la cobertura predominante actual es incompatible con la intervención forestal.</p></div>`;
+    } else {
+        const r = RECOMENDACIONES[zona];
+        resultado = `<div class="diagnostic-box ${r.clase}"><b>${r.icono} ${r.titulo}</b><p>${r.texto}</p></div>`;
     }
 
-    // 2. Predominancia Real de Zona Roja
-    if (dominaRojo) {
-        return `
-            <div class="diagnostic-box restoration" style="background:#fef2f2; border: 1px solid #fca5a5; padding: 10px; border-radius: 6px;">
-                <b style="color:#991b1b;">🔴 Restauración ecológica (Predominante)</b>
-                <p style="margin: 4px 0 0; font-size: 11px; color: #7f1d1d;">
-                    La mayor superficie del polígono corresponde a Zona Roja. Terreno altamente idóneo para proyectos de restauración biológica sin alterar la estructura del bosque circundante.
-                </p>
-                ${htmlComposicion}
-            </div>`;
-    }
-
-    // 3. Predominancia Real de Zona Amarilla
-    if (dominaAmarillo) {
-        return `
-            <div class="diagnostic-box warning" style="background:#fefce8; border: 1px solid #fef08a; padding: 10px; border-radius: 6px;">
-                <b style="color:#854d0e;">🟨 Enriquecimiento sostenible (Predominante)</b>
-                <p style="margin: 4px 0 0; font-size: 11px; color: #713f12;">
-                    La mayoría del terreno pertenece a Zona Amarilla. Se permite la intervención para plantar quebracho en parches degradados, abrir sutilmente líneas de enriquecimiento o clausurar sectores temporalmente para asegurar que los plantines jóvenes sobrevivan al ganado.
-                </p>
-                ${htmlComposicion}
-            </div>`;
-    }
-
-    // 4. Predominancia Real de Zona Verde / Libre
     return `
-        <div class="diagnostic-box pass" style="background:#f0fdf4; border: 1px solid #86efac; padding: 10px; border-radius: 6px;">
-            <b style="color:#166534;">🟩 Reforestación productiva (Predominante)</b>
-            <p style="margin: 4px 0 0; font-size: 11px; color: #14532d;">
-                Predomina la superficie de Zona Verde o Libre. Idóneo para plantaciones en bloque o cortinas forestales de quebracho colorado.
-            </p>
-            ${htmlComposicion}
+        <div class="card decision">
+            <div class="card-title">Cómo se llegó a la recomendación</div>
+            <ol class="cadena-decision">${pasos}</ol>
+            ${resultado}
         </div>`;
 }
 
-function crearBarraProgreso(label, valor) {
+function crearBarraProgreso(label, valor, umbral = null) {
+    valor = valor || 0;
     const porcentaje = Math.min(Math.max(valor * 100, 0), 100).toFixed(0);
     return `
         <div class="metric-row">
@@ -197,7 +269,44 @@ function crearBarraProgreso(label, valor) {
             </div>
             <div class="progress-bar-bg">
                 <div class="progress-bar-fill" style="width: ${porcentaje}%;"></div>
+                ${umbral !== null ? `<div class="progress-umbral" style="left:${umbral * 100}%" title="Umbral ${umbral.toFixed(2)}"></div>` : ''}
             </div>
+        </div>`;
+}
+
+function tarjetaBiofisica(props) {
+    const fao = FAO[claseFAO(props)];
+    return `
+        <div class="card bloque-modelo">
+            <div class="card-title"><span class="etiqueta-origen modelo">Modelo</span> Idoneidad biofísica</div>
+            <p class="bloque-ayuda">Indicadores calculados por el sistema. No dependen de la normativa.</p>
+            ${crearBarraProgreso('Aptitud del suelo (40 %)', props.aptitud_suelo, 0.40)}
+            ${crearBarraProgreso('Aptitud de la lluvia (40 %)', props.aptitud_lluvia)}
+            ${crearBarraProgreso('Aptitud del NDVI (20 %)', props.aptitud_ndvi)}
+            <hr style="border:0; border-top: 1px solid #e2e8f0; margin: 8px 0;">
+            ${crearBarraProgreso('Aptitud biofísica', props.aptitud_biofisica, 0.60)}
+            <div class="clase-fao"><i style="background:${fao.color}"></i><span>Clase FAO: <b>${fao.nombre}</b></span></div>
+            <div class="atributos-suelo">
+                <b>Subgrupo:</b> ${escHTML(props.subgrupo || 'Sin datos')}<br>
+                <b>Textura superficial:</b> ${escHTML(props.textura || 'Sin datos')}
+            </div>
+            <p class="bloque-nota">Las marcas verticales indican los umbrales del modelo: suelo mayor a 0.40 y aptitud biofísica de al menos 0.60.</p>
+        </div>`;
+}
+
+function tarjetaOTBN(props) {
+    const c = composicionOTBN(props);
+    const segmentos = [['roja', c.rojo], ['amarilla', c.amarillo], ['verde', c.verde], ['libre', c.libre]].filter(([, v]) => v > 0);
+    const zona = zonaModelo(props);
+    return `
+        <div class="card bloque-normativa">
+            <div class="card-title"><span class="etiqueta-origen normativa">Normativa</span> Zonificación OTBN (Ley 26.331)</div>
+            <p class="bloque-ayuda">Restricción legal: indica qué tipo de intervención se permite, no si el terreno es idóneo.
+                <a href="#" class="ayuda-link" onclick="abrirGuia('composicion'); return false;">¿cómo se calcula?</a></p>
+            <div class="otbn-barra">${segmentos.map(([z, v]) => `<span style="width:${v}%;background:${ZONAS_OTBN[z].color}" title="${ZONAS_OTBN[z].nombre}: ${v.toFixed(1)} %"></span>`).join('')}</div>
+            <ul class="otbn-lista">${segmentos.map(([z, v]) => `
+                <li><i style="background:${ZONAS_OTBN[z].color}"></i>${ZONAS_OTBN[z].nombre}<b>${v.toFixed(1)} %</b></li>`).join('')}</ul>
+            <p class="bloque-nota">Define la intervención: <b>${textoZona(props)}</b>.</p>
         </div>`;
 }
 
@@ -211,13 +320,13 @@ function tarjetaCobertura(props) {
         nota = `<p class="cobertura-nota compatible">Cobertura compatible con la intervención forestal.</p>`;
     }
     return `
-        <div class="card">
-            <div class="card-title">Cobertura actual del suelo (MapBiomas)</div>
+        <div class="card bloque-cobertura">
+            <div class="card-title"><span class="etiqueta-origen cobertura">Cobertura</span> Uso actual del suelo (MapBiomas)</div>
             <div class="cobertura-fila">
                 <i style="background:${props.uso_color}"></i>
                 <span><b>${escHTML(props.uso_nombre)}</b>${props.uso_codigo ? ` · código ${props.uso_codigo}` : ''}</span>
             </div>
-            <p style="margin: 4px 0 0; font-size: 11px; color: #64748b;">Clase predominante dentro del polígono.</p>
+            <p class="bloque-nota">Clase predominante dentro del polígono.</p>
             ${nota}
         </div>`;
 }
@@ -229,47 +338,23 @@ function seleccionarPoligono(feature, layer, registrar = true) {
         registrarConsultaPoligono(props.id);
     }
     const container = document.getElementById('detalle-suelo');
-    
-    let badgeClass = 'badge-danger'; // Gris oscuro / Rojo por defecto
+
+    let badgeClass = 'badge-danger';
     const claseTexto = props.clasificacion_final || "";
-    
-    if (claseTexto.includes('verde')) badgeClass = 'badge-success'; // Verde
-    else if (claseTexto.includes('Enriquecimiento sostenible')) badgeClass = 'badge-warning'; // Amarillo
-    else if (claseTexto.includes('Uso excluido')) badgeClass = 'badge-secondary'; // Gris
+    if (claseTexto.includes('verde')) badgeClass = 'badge-success';
+    else if (claseTexto.includes('Enriquecimiento sostenible')) badgeClass = 'badge-warning';
+    else if (claseTexto.includes('Uso excluido')) badgeClass = 'badge-secondary';
 
     container.innerHTML = `
-        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
             <span style="font-size: 14px; font-weight: 700;">Polígono #${props.id}</span>
-            <span class="badge ${badgeClass}">${props.clasificacion_final}</span>
+            <span class="badge ${badgeClass}">${escHTML(props.clasificacion_final || '')}</span>
         </div>
 
         ${generarDiagnostico(props)}
-
-        <div class="card" style="margin-top: 12px;">
-            <div class="card-title">Métricas de Idoneidad Biofísica</div>
-            ${crearBarraProgreso('Aptitud Suelo', props.aptitud_suelo)}
-            ${crearBarraProgreso('Aptitud Lluvia', props.aptitud_lluvia)}
-            ${crearBarraProgreso('Índice de Vegetación de Diferencia Normalizada', props.aptitud_ndvi)}
-            <hr style="border:0; border-top: 1px solid #e2e8f0; margin: 8px 0;">
-            ${crearBarraProgreso('Puntaje biofísico base', props.aptitud_biofisica)}
-        </div>
-
-        <div class="card">
-            <div class="card-title">Atributos del suelo</div>
-            <div style="font-size: 12px; color: #475569;">
-                <b>Subgrupo:</b> ${props.subgrupo || 'Sin datos'}<br>
-                <b>Textura superficial:</b> ${props.textura || 'Sin datos'}
-            </div>
-        </div>
-
+        ${tarjetaBiofisica(props)}
         ${tarjetaCobertura(props)}
-
-        <div style="text-align: center; padding: 10px; background: #e2e8f0; border-radius: 8px; margin-top: 10px;">
-            <span style="font-size: 11px; text-transform: uppercase; color: #475569; font-weight: 700;">Puntaje final</span>
-            <div style="font-size: 22px; font-weight: 700; color: #0f172a;">
-    ${(props.aptitud_biofisica || props.aptitud_final).toFixed(2)}
-</div>
-        </div>
+        ${tarjetaOTBN(props)}
 
         <button class="btn-reporte-pdf" onclick="descargarReportePDF(${props.id})">
             📄 Generar reporte técnico (PDF)
@@ -1461,3 +1546,7 @@ async function mostrarMapbiomas(visible) {
     }
 }
 document.getElementById('toggle-mapbiomas').addEventListener('change', e => mostrarMapbiomas(e.target.checked));
+
+// --- Selector de vista del mapa
+document.querySelectorAll('.vista-btn').forEach(btn => btn.addEventListener('click', () => cambiarVista(btn.dataset.vista)));
+dibujarLeyendaVista();

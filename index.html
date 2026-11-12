@@ -111,12 +111,13 @@
 
     <!-- Leyenda -->
     <div class="legend">
-        <h4>Referencias</h4>
-        <div class="legend-item"><div class="legend-color" style="background: #22c55e;"></div> Apto reforestación productiva (Zona Verde)</div>
-        <div class="legend-item"><div class="legend-color" style="background: #eab308;"></div> Apto manejo sostenible y enriquecimiento (Zona Amarilla)</div>
-        <div class="legend-item"><div class="legend-color" style="background: #ef4444;"></div> Prioridad restauración (Zona Roja)</div>
-        <div class="legend-item"><div class="legend-color" style="background: #6b7280;"></div> No apto (Uso de suelo excluido)</div>
-        <div class="legend-item"><div class="legend-color" style="background: #1e293b;"></div> No apto biofísicamente</div>
+        <h4>Vista del mapa</h4>
+        <div class="vista-selector" role="tablist" aria-label="Vista del mapa">
+            <button type="button" class="vista-btn activo" data-vista="final" title="Combina idoneidad, cobertura y normativa">Recomendación</button>
+            <button type="button" class="vista-btn" data-vista="biofisica" title="Solo los indicadores calculados por el modelo">Idoneidad biofísica</button>
+            <button type="button" class="vista-btn" data-vista="otbn" title="Solo la zonificación legal de bosques nativos">Normativa OTBN</button>
+        </div>
+        <div id="leyenda-vista"></div>
         <label class="legend-capa" title="Muestra dónde se registraron ejemplares de quebracho colorado">
             <input type="checkbox" id="toggle-censo" />
             <span class="legend-punto"></span> Quebrachos censados (Inventario 2021)
@@ -231,6 +232,7 @@
                 <nav class="guia-nav" aria-label="Secciones de la guía">
                     <a href="#guia-que-es">¿Qué es SITCHA?</a>
                     <a href="#guia-mapa">Explorar el mapa</a>
+                    <a href="#guia-vistas">Vistas del mapa</a>
                     <a href="#guia-categorias">Categorías del mapa</a>
                     <a href="#guia-censo">Quebrachos censados</a>
                     <a href="#guia-territorio">Capas de territorio</a>
@@ -256,6 +258,17 @@
                             <li><b>Ver un polígono:</b> al pasar el cursor, el polígono se resalta; al hacer clic, queda marcado con borde oscuro y su diagnóstico aparece en el panel derecho.</li>
                             <li><b>Leyenda:</b> el recuadro inferior izquierdo indica el significado de cada color y permite mostrar u ocultar la capa de quebrachos censados.</li>
                         </ul>
+                    </section>
+
+                    <section id="guia-vistas">
+                        <h4>Vistas del mapa: idoneidad, normativa y recomendación</h4>
+                        <p>La recomendación de SITCHA surge de combinar dos fuentes independientes, que el recuadro <b>«Vista del mapa»</b> permite ver por separado:</p>
+                        <ul>
+                            <li><b>Idoneidad biofísica</b> (en tonos de azul): lo que <b>calcula el modelo</b> a partir del suelo, la lluvia y el vigor de la vegetación (NDVI). Responde a la pregunta «¿puede crecer el quebracho aquí?». Se expresa en las clases de la FAO: óptima (S1), moderada (S2), marginal (S3) y no apta (N). Solo S1 y S2 superan el umbral de 0.60.</li>
+                            <li><b>Normativa OTBN</b> (rojo, amarillo y verde oficiales): lo que <b>establece la ley</b>. El Ordenamiento Territorial de Bosques Nativos (Ley 26.331) no evalúa si el terreno es idóneo, sino qué se puede hacer en él. Cada polígono toma el color de la zona con mayor superficie.</li>
+                            <li><b>Recomendación</b>: el mapa de decisión. Si el polígono es biofísicamente apto y su cobertura actual es compatible, la zona OTBN dominante define el tipo de intervención: restauración (roja), enriquecimiento (amarilla) o reforestación productiva (verde).</li>
+                        </ul>
+                        <p class="guia-nota">En la vista de recomendación, el verde, el amarillo y el rojo indican el <b>tipo de intervención</b> permitido para un terreno ya apto, no su grado de aptitud. El grado de aptitud se consulta en la vista de idoneidad biofísica.</p>
                     </section>
 
                     <section id="guia-categorias">
@@ -301,14 +314,13 @@
 
                     <section id="guia-panel">
                         <h4>Panel de diagnóstico</h4>
-                        <p>Al seleccionar un polígono, el panel derecho muestra, de arriba hacia abajo:</p>
+                        <p>Al seleccionar un polígono, el panel derecho separa claramente lo que <b>calcula el modelo</b> de lo que <b>establece la normativa</b>:</p>
                         <ul>
-                            <li><b>Número de polígono y categoría</b> asignada.</li>
-                            <li><b>Diagnóstico:</b> la recomendación de intervención y, si el terreno no es apto, el motivo (aptitud insuficiente o uso del suelo excluido).</li>
-                            <li><b>Composición del polígono:</b> el porcentaje de su superficie en cada zona de la OTBN (ver la sección siguiente).</li>
-                            <li><b>Métricas de idoneidad biofísica:</b> la aptitud del suelo, de la lluvia y del índice de vegetación (NDVI), en una escala de 0 a 1, y el puntaje biofísico que las combina.</li>
-                            <li><b>Atributos del suelo:</b> el subgrupo taxonómico y la textura superficial según la carta de suelos del INTA.</li>
-                            <li><b>Puntaje final</b> y el botón para generar el reporte técnico en PDF.</li>
+                            <li><b>Cómo se llegó a la recomendación:</b> la cadena de decisión en tres pasos — idoneidad biofísica, cobertura actual del suelo y zonificación OTBN — con el resultado final y su explicación.</li>
+                            <li><span class="etiqueta-origen modelo">Modelo</span> <b>Idoneidad biofísica:</b> la aptitud del suelo, de la lluvia y del NDVI (de 0 a 1) con su peso, la aptitud biofísica que las combina, su clase FAO y los atributos del suelo. Las marcas verticales señalan los umbrales del modelo.</li>
+                            <li><span class="etiqueta-origen cobertura">Cobertura</span> <b>Uso actual del suelo:</b> la clase predominante de MapBiomas y si es compatible o excluida.</li>
+                            <li><span class="etiqueta-origen normativa">Normativa</span> <b>Zonificación OTBN:</b> el porcentaje de la superficie en cada zona de la Ley 26.331 y la zona que define el tipo de intervención.</li>
+                            <li>El botón para generar el <b>reporte técnico en PDF</b>.</li>
                         </ul>
                     </section>
 

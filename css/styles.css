@@ -501,3 +501,44 @@ body { margin: 0; padding: 0; background: #f4f6f8; }
 .cobertura-nota { margin: 6px 0 0; font-size: 11px; }
 .cobertura-nota.excluida { color: #991b1b; }
 .cobertura-nota.compatible { color: #166534; }
+
+/* ---------- Vistas del mapa y panel separado ---------- */
+.vista-selector { display: flex; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; margin-bottom: 6px; }
+.vista-btn { flex: 1; border: 0; background: #fff; padding: 5px 6px; font-size: 10.5px; font-weight: 600; color: #475569; cursor: pointer; line-height: 1.2; }
+.vista-btn + .vista-btn { border-left: 1px solid #cbd5e1; }
+.vista-btn.activo { background: #1e293b; color: #fff; }
+.vista-descripcion { margin: 0 0 6px; font-size: 10.5px; color: #64748b; line-height: 1.3; }
+.legend .legend-color { flex-shrink: 0; border: 1px solid rgba(0,0,0,.15); }
+
+.etiqueta-origen { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  padding: 1px 6px; border-radius: 4px; margin-right: 4px; vertical-align: 1px; }
+.etiqueta-origen.modelo { background: #dbeafe; color: #1e40af; }
+.etiqueta-origen.normativa { background: #fde68a; color: #78350f; }
+.etiqueta-origen.cobertura { background: #e9d5ff; color: #6b21a8; }
+.card.bloque-modelo { border-left: 4px solid #3b82f6; }
+.card.bloque-normativa { border-left: 4px solid #d97706; }
+.card.bloque-cobertura { border-left: 4px solid #9333ea; }
+.bloque-ayuda { margin: -2px 0 8px; font-size: 11px; color: #64748b; line-height: 1.35; }
+.bloque-nota { margin: 6px 0 0; font-size: 10.5px; color: #64748b; line-height: 1.35; }
+.progress-bar-bg { position: relative; }
+.progress-umbral { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #0f172a; opacity: .7; }
+.clase-fao { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: #1e293b; }
+.clase-fao i { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.2); }
+.atributos-suelo { margin-top: 8px; font-size: 12px; color: #475569; }
+.otbn-barra { display: flex; height: 12px; border-radius: 4px; overflow: hidden; border: 1px solid #d6d3d1; }
+.otbn-barra span { display: block; height: 100%; }
+.otbn-lista { list-style: none; margin: 6px 0 0; padding: 0; font-size: 11.5px; color: #334155; }
+.otbn-lista li { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+.otbn-lista li i { width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,.2); flex-shrink: 0; }
+.otbn-lista li b { margin-left: auto; }
+.card.decision .diagnostic-box p { margin: 4px 0 0; font-size: 11px; }
+.cadena-decision { list-style: none; margin: 0 0 8px; padding: 0; font-size: 11.5px; color: #334155; }
+.cadena-decision .paso { display: flex; gap: 6px; align-items: flex-start; padding: 2px 0; }
+.paso-icono { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.paso.ok .paso-icono { background: #dcfce7; color: #166534; }
+.paso.no .paso-icono { background: #fee2e2; color: #991b1b; }
+.paso.na { color: #94a3b8; }
+.paso.na .paso-icono { background: #f1f5f9; color: #94a3b8; }
+.diagnostic-box.warning { background: #fefce8; border-left: 4px solid #eab308; color: #713f12; }
+.diagnostic-box.restoration { background: #fef2f2; border-left: 4px solid #ef4444; color: #7f1d1d; }
+.badge-secondary { background: #e5e7eb; color: #374151; }
