@@ -470,3 +470,34 @@ body { margin: 0; padding: 0; background: #f4f6f8; }
 .admin-menu-lista hr { border: none; border-top: 1px solid #f1f5f9; margin: 4px 0; }
 .admin-menu-salir { color: #b91c1c !important; }
 .top-bar { z-index: 1100; } /* el menú de administración debe quedar sobre el panel lateral */
+
+/* ---------- Capas de territorio ---------- */
+.legend { max-height: calc(100vh - 140px); overflow-y: auto; max-width: 320px; }
+.legend-territorio { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+.legend-territorio h4 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.legend-territorio h4 .ayuda-link { font-weight: 500; font-size: 11px; }
+.legend-capa.sin-borde { border-top: 0; padding-top: 0; margin-top: 6px; }
+.fondo-selector { display: flex; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; }
+.fondo-btn { flex: 1; border: 0; background: #fff; padding: 5px 8px; font-size: 11px; font-weight: 600; color: #475569; cursor: pointer; }
+.fondo-btn + .fondo-btn { border-left: 1px solid #cbd5e1; }
+.fondo-btn.activo { background: #1e293b; color: #fff; }
+.legend-linea { width: 14px; height: 0; border-top: 2px dashed #7c3aed; flex-shrink: 0; }
+.legend-mosaico { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0;
+  background: linear-gradient(135deg, #1f8d49 0 33%, #e974ed 33% 66%, #2532e4 66%); }
+.mapbiomas-leyenda { margin-top: 6px; max-height: 170px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px; background: #f8fafc; }
+.mapbiomas-leyenda .mb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; }
+.mapbiomas-leyenda .mb-item { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #334155; line-height: 1.2; }
+.mapbiomas-leyenda .mb-item i { width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,.2); flex-shrink: 0; }
+.mapbiomas-leyenda .mb-item.excluida { color: #991b1b; }
+.mapbiomas-leyenda .mb-nota { margin: 6px 0 0; font-size: 10px; color: #64748b; }
+.legend-opacidad { display: block; margin-top: 8px; font-size: 11px; color: #475569; }
+.legend-opacidad span { display: flex; justify-content: space-between; }
+.legend-opacidad input { width: 100%; margin: 4px 0 0; }
+.etiqueta-depto { background: none; border: 0; box-shadow: none; color: #4c1d95; font-weight: 700; font-size: 11px;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; white-space: nowrap; }
+.etiqueta-depto::before { display: none; }
+.cobertura-fila { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #334155; }
+.cobertura-fila i { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.2); flex-shrink: 0; }
+.cobertura-nota { margin: 6px 0 0; font-size: 11px; }
+.cobertura-nota.excluida { color: #991b1b; }
+.cobertura-nota.compatible { color: #166534; }

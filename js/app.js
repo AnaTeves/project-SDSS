@@ -52,9 +52,22 @@ const map = L.map('map', {
 
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+// Mapas de fondo: OpenStreetMap (por defecto) o imagen satelital con nombres de lugares
+const fondoMapa = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
 }).addTo(map);
+const fondoSatelite = L.layerGroup([
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics y la comunidad de usuarios de SIG'
+    }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19, pane: 'shadowPane'
+    })
+]);
+
+// Opacidad de relleno de los polígonos de aptitud (ajustable desde la leyenda)
+let opacidadPoligonos = 0.7;
 
 // Estilos dinámicos para los polígonos
 function obtenerColor(clasificacion) {
@@ -73,7 +86,7 @@ function estiloFeature(feature) {
         weight: 1.2,
         opacity: 1,
         color: '#ffffff',
-        fillOpacity: 0.7
+        fillOpacity: opacidadPoligonos
     };
 }
 
@@ -87,7 +100,7 @@ function resaltarPoligono(layer) {
     layer.setStyle({
         color: '#161d2d',    // Borde negro/oscuro destacado
         weight: 3.5,         // Borde grueso
-        fillOpacity: 0.95
+        fillOpacity: Math.min(0.95, opacidadPoligonos + 0.25)
     });
 
     layer.bringToFront();
@@ -188,6 +201,27 @@ function crearBarraProgreso(label, valor) {
         </div>`;
 }
 
+// Cobertura predominante del polígono según MapBiomas (la que evalúa el filtro de uso excluido)
+function tarjetaCobertura(props) {
+    if (!props.uso_nombre) return '';
+    let nota = '';
+    if (props.uso_excluido === true) {
+        nota = `<p class="cobertura-nota excluida">Cobertura excluida por el modelo: no se recomienda intervención forestal.</p>`;
+    } else if (props.uso_excluido === false) {
+        nota = `<p class="cobertura-nota compatible">Cobertura compatible con la intervención forestal.</p>`;
+    }
+    return `
+        <div class="card">
+            <div class="card-title">Cobertura actual del suelo (MapBiomas)</div>
+            <div class="cobertura-fila">
+                <i style="background:${props.uso_color}"></i>
+                <span><b>${escHTML(props.uso_nombre)}</b>${props.uso_codigo ? ` · código ${props.uso_codigo}` : ''}</span>
+            </div>
+            <p style="margin: 4px 0 0; font-size: 11px; color: #64748b;">Clase predominante dentro del polígono.</p>
+            ${nota}
+        </div>`;
+}
+
 function seleccionarPoligono(feature, layer, registrar = true) {
     resaltarPoligono(layer);
     const props = feature.properties;
@@ -228,6 +262,8 @@ function seleccionarPoligono(feature, layer, registrar = true) {
             </div>
         </div>
 
+        ${tarjetaCobertura(props)}
+
         <div style="text-align: center; padding: 10px; background: #e2e8f0; border-radius: 8px; margin-top: 10px;">
             <span style="font-size: 11px; text-transform: uppercase; color: #475569; font-weight: 700;">Puntaje final</span>
             <div style="font-size: 22px; font-weight: 700; color: #0f172a;">
@@ -249,7 +285,7 @@ function onEachFeature(feature, layer) {
     layer.on({
         mouseover: function(e) {
             if (layer !== capaSeleccionada) {
-                e.target.setStyle({ fillOpacity: 0.9, weight: 2.5 });
+                e.target.setStyle({ fillOpacity: Math.min(0.9, opacidadPoligonos + 0.2), weight: 2.5 });
             }
         },
         mouseout: function(e) {
@@ -1290,3 +1326,138 @@ async function mostrarCapaCenso(visible) {
 }
 
 document.getElementById("toggle-censo").addEventListener("change", e => mostrarCapaCenso(e.target.checked));
+
+
+// ==========================================
+// CAPAS DE TERRITORIO (contexto; no modifican el modelo)
+// ==========================================
+map.createPane('territorio');
+map.getPane('territorio').style.zIndex = 350;          // debajo de los polígonos de aptitud
+map.createPane('limites');
+map.getPane('limites').style.zIndex = 440;             // sobre los polígonos, debajo del censo
+map.getPane('limites').style.pointerEvents = 'none';   // no interfiere con los clics en los polígonos
+
+const territorioEstado = document.getElementById('territorio-estado');
+function mensajeTerritorio(texto) {
+    territorioEstado.textContent = texto || '';
+    territorioEstado.classList.toggle('hidden', !texto);
+}
+
+// --- Mapa de fondo
+document.querySelectorAll('.fondo-btn').forEach(btn => btn.addEventListener('click', () => {
+    const satelite = btn.dataset.fondo === 'satelite';
+    document.querySelectorAll('.fondo-btn').forEach(b => b.classList.toggle('activo', b === btn));
+    if (satelite) { map.removeLayer(fondoMapa); fondoSatelite.addTo(map); }
+    else { map.removeLayer(fondoSatelite); fondoMapa.addTo(map); }
+}));
+
+// --- Opacidad de los polígonos
+const sliderOpacidad = document.getElementById('opacidad-poligonos');
+function aplicarOpacidad(valor) {
+    opacidadPoligonos = valor / 100;
+    sliderOpacidad.value = valor;
+    document.getElementById('opacidad-valor').textContent = `${valor} %`;
+    if (geojsonLayer) geojsonLayer.eachLayer(l => {
+        if (l === capaSeleccionada) l.setStyle({ fillOpacity: Math.min(0.95, opacidadPoligonos + 0.25) });
+        else l.setStyle({ fillOpacity: opacidadPoligonos });
+    });
+}
+sliderOpacidad.addEventListener('input', e => aplicarOpacidad(parseInt(e.target.value, 10)));
+
+// --- Límites departamentales (IGN)
+let capaDepartamentos = null, etiquetasDepartamentos = null;
+const ZOOM_ETIQUETAS = 8;
+
+function actualizarEtiquetasDepartamentos() {
+    if (!etiquetasDepartamentos) return;
+    const visibles = map.hasLayer(capaDepartamentos) && map.getZoom() >= ZOOM_ETIQUETAS;
+    if (visibles && !map.hasLayer(etiquetasDepartamentos)) etiquetasDepartamentos.addTo(map);
+    if (!visibles && map.hasLayer(etiquetasDepartamentos)) map.removeLayer(etiquetasDepartamentos);
+}
+map.on('zoomend', actualizarEtiquetasDepartamentos);
+
+async function mostrarDepartamentos(visible) {
+    const casilla = document.getElementById('toggle-departamentos');
+    if (!visible) {
+        if (capaDepartamentos) map.removeLayer(capaDepartamentos);
+        actualizarEtiquetasDepartamentos();
+        return;
+    }
+    if (!capaDepartamentos) {
+        mensajeTerritorio('Cargando límites departamentales…');
+        try {
+            const res = await fetch(`${API_BASE}/api/capas/departamentos`);
+            if (!res.ok) throw new Error(`Error ${res.status}`);
+            const datos = await res.json();
+            capaDepartamentos = L.geoJSON(datos, {
+                pane: 'limites', interactive: false,
+                style: { color: '#7c3aed', weight: 1.8, dashArray: '6 4', fill: false, opacity: 0.9 }
+            });
+            etiquetasDepartamentos = L.layerGroup(datos.features.map(f => {
+                const centro = L.geoJSON(f).getBounds().getCenter();
+                return L.tooltip({ permanent: true, direction: 'center', className: 'etiqueta-depto', pane: 'limites' })
+                    .setLatLng(centro).setContent(escHTML(f.properties.nombre));
+            }));
+            mensajeTerritorio('');
+        } catch (err) {
+            console.error('Error cargando departamentos:', err);
+            mensajeTerritorio('No se pudieron cargar los límites departamentales (servicio del IGN).');
+            casilla.checked = false;
+            return;
+        }
+    }
+    if (casilla.checked) {
+        capaDepartamentos.addTo(map);
+        actualizarEtiquetasDepartamentos();
+    }
+}
+document.getElementById('toggle-departamentos').addEventListener('change', e => mostrarDepartamentos(e.target.checked));
+
+// --- Cobertura del suelo (MapBiomas Chaco, teselas de Earth Engine)
+let capaMapbiomas = null, opacidadPrevia = null;
+
+function dibujarLeyendaMapbiomas(leyenda) {
+    const cont = document.getElementById('mapbiomas-leyenda');
+    cont.innerHTML = `<div class="mb-grid">${leyenda.map(c => `
+        <div class="mb-item${c.excluida ? ' excluida' : ''}" title="Código ${c.codigo}${c.excluida ? ' · cobertura excluida' : ''}">
+            <i style="background:${c.color}"></i>${escHTML(c.nombre)}${c.excluida ? ' ✕' : ''}
+        </div>`).join('')}</div>
+        <p class="mb-nota">✕ = cobertura excluida por el modelo. Fuente: MapBiomas Chaco, colección 5.</p>`;
+}
+
+async function mostrarMapbiomas(visible) {
+    const casilla = document.getElementById('toggle-mapbiomas');
+    const leyenda = document.getElementById('mapbiomas-leyenda');
+    if (!visible) {
+        if (capaMapbiomas) map.removeLayer(capaMapbiomas);
+        leyenda.classList.add('hidden');
+        if (opacidadPrevia !== null) { aplicarOpacidad(opacidadPrevia); opacidadPrevia = null; }
+        return;
+    }
+    if (!capaMapbiomas) {
+        mensajeTerritorio('Generando la capa de cobertura en Google Earth Engine…');
+        try {
+            const res = await fetch(`${API_BASE}/api/capas/mapbiomas`);
+            if (!res.ok) throw new Error(`Error ${res.status}`);
+            const datos = await res.json();
+            capaMapbiomas = L.tileLayer(datos.url, {
+                pane: 'territorio', opacity: 0.85, maxZoom: 19,
+                attribution: 'Cobertura: MapBiomas Chaco (col. 5) · Google Earth Engine'
+            });
+            dibujarLeyendaMapbiomas(datos.leyenda);
+            mensajeTerritorio('');
+        } catch (err) {
+            console.error('Error cargando MapBiomas:', err);
+            mensajeTerritorio('No se pudo generar la capa de cobertura. Intentá nuevamente en unos minutos.');
+            casilla.checked = false;
+            return;
+        }
+    }
+    if (casilla.checked) {
+        capaMapbiomas.addTo(map);
+        leyenda.classList.remove('hidden');
+        // Se aclaran los polígonos para que se vea la cobertura debajo
+        if (opacidadPoligonos > 0.25) { opacidadPrevia = Math.round(opacidadPoligonos * 100); aplicarOpacidad(20); }
+    }
+}
+document.getElementById('toggle-mapbiomas').addEventListener('change', e => mostrarMapbiomas(e.target.checked));

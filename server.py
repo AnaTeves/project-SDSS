@@ -7,7 +7,7 @@ import asyncio
 from fastapi import FastAPI, HTTPException, Response, BackgroundTasks, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from dotenv import load_dotenv
 import subprocess
 import threading
@@ -17,7 +17,8 @@ from datetime import datetime, timezone
 from main import ejecutar_pipeline, ETAPAS_PIPELINE
 from pydantic import BaseModel, Field
 from typing import List
-from src import parametros_edaficos, reporte_pdf
+from src import parametros_edaficos, reporte_pdf, capas_territorio
+from src.raster_normalizer import RasterNormalizer
 from supabase import create_client, Client
 
 # Cargar variables de entorno desde el archivo .env
@@ -56,6 +57,7 @@ app.add_middleware(
 
 # rear el motor de conexión
 engine = create_engine(DATABASE_URL)
+CLASES_EXCLUIDAS = RasterNormalizer().clases_excluidas
 
 
 etl_en_progreso = False  # Flag global para controlar la ejecución del pipeline ETL
@@ -297,9 +299,16 @@ def obtener_aptitud_suelos():
             pct_verde,
             clasificacion_final,
             aptitud_final,
+            {uso}
             ST_AsGeoJSON(ST_Transform(geom, 4326))::json AS geometria
         FROM "mapa_aptitud_finalv2";
     """
+    # La columna val_uso_suelo la genera el pipeline; si la tabla es de una versión anterior, se omite
+    try:
+        columnas = {c['name'] for c in inspect(engine).get_columns('mapa_aptitud_finalv2')}
+    except Exception:
+        columnas = set()
+    query = query.format(uso='val_uso_suelo,' if 'val_uso_suelo' in columnas else 'NULL AS val_uso_suelo,')
     # conexion segura a la base de datos
     try:
         with engine.connect() as connection:
@@ -321,7 +330,8 @@ def obtener_aptitud_suelos():
                         "pct_amarillo": row.pct_amarillo,
                         "pct_verde": row.pct_verde,
                         "clasificacion_final": row.clasificacion_final,
-                        "aptitud_final": row.aptitud_final
+                        "aptitud_final": row.aptitud_final,
+                        **capas_territorio.describir_uso(row.val_uso_suelo, CLASES_EXCLUIDAS)
                     }
                 }
                 features.append(feature)
@@ -403,3 +413,37 @@ def obtener_censo_quebracho():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+
+
+# ==========================================
+# CAPAS DE CONTEXTO TERRITORIAL (públicas, no intervienen en el modelo)
+# ==========================================
+@app.get("/api/capas/mapbiomas")
+def capa_mapbiomas():
+    """
+    Teselas de la cobertura y uso del suelo de MapBiomas Chaco (colección 5), generadas por Google Earth
+    Engine a partir del mismo asset que usa el pipeline, junto con su leyenda y las clases excluidas.
+    """
+    try:
+        url = capas_territorio.url_teselas_mapbiomas()
+    except Exception as e:
+        print(f"No se pudo generar la capa de MapBiomas: {e}")
+        raise HTTPException(status_code=503, detail="No se pudo generar la capa de cobertura en Google Earth Engine.")
+    return {
+        "url": url,
+        "leyenda": capas_territorio.leyenda_mapbiomas(CLASES_EXCLUIDAS),
+        "fuente": "MapBiomas Chaco, colección 5 (procesado en Google Earth Engine)",
+    }
+
+
+@app.get("/api/capas/departamentos")
+def capa_departamentos():
+    """Límites departamentales del Chaco (IGN), descargados una vez y guardados en memoria."""
+    try:
+        datos = capas_territorio.departamentos_chaco(engine)
+    except Exception as e:
+        print(f"No se pudieron obtener los departamentos del IGN: {e}")
+        raise HTTPException(status_code=502, detail="No se pudo consultar el servicio del Instituto Geográfico Nacional.")
+    if not datos["features"]:
+        raise HTTPException(status_code=502, detail="El servicio del IGN no devolvió departamentos para el Chaco.")
+    return datos

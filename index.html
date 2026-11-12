@@ -122,6 +122,28 @@
             <span class="legend-punto"></span> Quebrachos censados (Inventario 2021)
         </label>
         <p id="censo-estado" class="legend-estado hidden"></p>
+
+        <div class="legend-territorio">
+            <h4>Capas de territorio <a href="#" class="ayuda-link" onclick="abrirGuia('territorio'); return false;" title="¿Para qué sirven?">¿para qué sirven?</a></h4>
+            <div class="fondo-selector" role="radiogroup" aria-label="Mapa de fondo">
+                <button type="button" class="fondo-btn activo" data-fondo="mapa">Mapa</button>
+                <button type="button" class="fondo-btn" data-fondo="satelite">Imagen satelital</button>
+            </div>
+            <label class="legend-capa sin-borde" title="Límites de los departamentos del Chaco (IGN)">
+                <input type="checkbox" id="toggle-departamentos" />
+                <span class="legend-linea"></span> Límites departamentales
+            </label>
+            <label class="legend-capa sin-borde" title="Cobertura y uso actual del suelo según MapBiomas Chaco">
+                <input type="checkbox" id="toggle-mapbiomas" />
+                <span class="legend-mosaico"></span> Cobertura del suelo (MapBiomas)
+            </label>
+            <p id="territorio-estado" class="legend-estado hidden"></p>
+            <div id="mapbiomas-leyenda" class="mapbiomas-leyenda hidden"></div>
+            <label class="legend-opacidad" for="opacidad-poligonos">
+                <span>Opacidad de los polígonos <b id="opacidad-valor">70 %</b></span>
+                <input type="range" id="opacidad-poligonos" min="0" max="100" step="5" value="70" />
+            </label>
+        </div>
     </div>
 
     <!-- Modal de reprocesamiento del modelo (solo administrador) -->
@@ -211,6 +233,7 @@
                     <a href="#guia-mapa">Explorar el mapa</a>
                     <a href="#guia-categorias">Categorías del mapa</a>
                     <a href="#guia-censo">Quebrachos censados</a>
+                    <a href="#guia-territorio">Capas de territorio</a>
                     <a href="#guia-buscar">Buscar por coordenadas</a>
                     <a href="#guia-panel">Panel de diagnóstico</a>
                     <a href="#guia-composicion">Composición del polígono</a>
@@ -255,6 +278,19 @@
                             <li>Es útil para planificar <b>planes de manejo o enriquecimiento</b>: indica dónde ya existen árboles de quebracho, que pueden funcionar como fuente de semillas o como referencia de sitios donde la especie prospera.</li>
                         </ul>
                         <p class="guia-nota">El inventario es un muestreo: la ausencia de puntos en una zona no significa que allí no haya quebrachos. Los datos reflejan el relevamiento de 2021.</p>
+                    </section>
+
+                    <section id="guia-territorio">
+                        <h4>Capas de territorio</h4>
+                        <p>En el recuadro de referencias, la sección <b>«Capas de territorio»</b> permite contrastar la clasificación del modelo con lo que hay efectivamente en el terreno. Estas capas son solo de consulta: no modifican el cálculo.</p>
+                        <ul>
+                            <li><b>Imagen satelital:</b> reemplaza el mapa de fondo por imágenes satelitales (Esri World Imagery) con nombres de lugares, para reconocer ciudades, lagunas, ríos, campos de cultivo y masas de bosque.</li>
+                            <li><b>Límites departamentales:</b> dibuja los departamentos del Chaco con su nombre (fuente: Instituto Geográfico Nacional). Los nombres aparecen al acercarse.</li>
+                            <li><b>Cobertura del suelo (MapBiomas):</b> muestra la cobertura y uso actual del suelo de MapBiomas Chaco (colección 5), la misma capa que usa el modelo para excluir usos incompatibles. En su leyenda, las clases marcadas con <b>✕</b> son las coberturas excluidas.</li>
+                            <li><b>Opacidad de los polígonos:</b> hace más transparentes los polígonos de aptitud para ver la capa de fondo. Al activar MapBiomas se reduce automáticamente.</li>
+                        </ul>
+                        <p>Por ejemplo, un polígono clasificado como <b>«No apto (uso excluido)»</b> debería coincidir con un área urbana, un cuerpo de agua o un uso agropecuario en la imagen satelital y en MapBiomas. El panel de diagnóstico indica además la cobertura predominante de cada polígono.</p>
+                        <p class="guia-nota">El modelo evalúa la cobertura <b>predominante</b> (la clase más frecuente) de cada polígono: un polígono puede contener una laguna o un pueblo y no estar excluido si esa cobertura ocupa una parte menor de su superficie.</p>
                     </section>
 
                     <section id="guia-buscar">
