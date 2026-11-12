@@ -101,6 +101,18 @@ def cargar_credenciales_gee(key_file='config/credentials.json'):
         "o define la variable de entorno GEE_CREDENTIALS_JSON."
     )
 
+# Cobertura y uso del suelo: se lee directamente el asset público de MapBiomas Chaco (colección 5) y se
+# usa su última banda (año más reciente). Antes se usaba una copia exportada a un asset propio
+# (users/lutevestessaro/Uso_Suelo_Actual_30m), que contenía códigos inexistentes en la leyenda (2, 5 y 56),
+# compatibles con valores promediados al generar las pirámides del asset.
+ASSET_MAPBIOMAS = 'projects/mapbiomas-public/assets/chaco/lulc/collection5/mapbiomas_chaco_collection5_integration_v2'
+
+
+def imagen_uso_mapbiomas():
+    imagen = ee.Image(ASSET_MAPBIOMAS)
+    return imagen.select([ee.String(imagen.bandNames().get(-1))])
+
+
 """
 Clase diseñada para interactuar con la API de Google Earth Engine utilizando una cuenta de servicio.
 Su objetivo principal es procesar analisis geoespaciales pesados directamente en la nube.
@@ -126,7 +138,7 @@ class GEEConnector:
         return {
             'ndvi': ee.Image('users/lutevestessaro/NDVI_Historico_30m').rename('val_ndvi'), # Indice de vegetacion de diferencia normalizada
             'lluvia': ee.Image('users/lutevestessaro/Precipitacion_Anual_30m').rename('val_lluvia'), # Precipitacion anual promedio
-            'uso': ee.Image('users/lutevestessaro/Uso_Suelo_Actual_30m').rename('val_uso_suelo') # Capa de clasificacion de cobertura y uso de suelo
+            'uso': imagen_uso_mapbiomas().rename('val_uso_suelo') # Cobertura y uso del suelo: MapBiomas Chaco col. 5, último año
         }
 
     def enriquecer_gdf(self, suelos_gdf):

@@ -149,7 +149,7 @@ const ZONAS_OTBN = {
     roja:     { color: '#dc2626', nombre: 'Zona roja (categoría I)', detalle: 'muy alto valor de conservación' },
     amarilla: { color: '#facc15', nombre: 'Zona amarilla (categoría II)', detalle: 'mediano valor de conservación' },
     verde:    { color: '#16a34a', nombre: 'Zona verde (categoría III)', detalle: 'bajo valor de conservación' },
-    libre:    { color: '#f5f5f4', nombre: 'Sin bosque nativo categorizado', detalle: 'fuera de las categorías de la OTBN' },
+    libre:    { color: '#a8a29e', nombre: 'Sin categoría OTBN', detalle: 'superficie sin bosque nativo (cultivos, pasturas, desmontes, áreas urbanas o vegetación no boscosa)' },
 };
 
 const VISTAS = {
@@ -173,7 +173,7 @@ const VISTAS = {
     },
     otbn: {
         titulo: 'Zonificación OTBN',
-        descripcion: 'Restricción normativa (Ley 26.331). Cada polígono toma el color de la zona con mayor superficie.',
+        descripcion: 'Restricción normativa (Ley 26.331). La OTBN solo zonifica el bosque nativo: donde no hay bosque, el territorio queda sin categoría. Cada polígono toma el color de la zona con mayor superficie.',
         color: p => ZONAS_OTBN[zonaMayoritaria(p)].color,
         leyenda: () => Object.values(ZONAS_OTBN).map(z => [z.color, `${z.nombre}: ${z.detalle}`]),
     },
@@ -213,7 +213,7 @@ const RECOMENDACIONES = {
 // Cadena de decisión: 1) idoneidad biofísica → 2) cobertura actual → 3) zonificación OTBN
 function textoZona(props) {
     const zona = zonaModelo(props), comp = composicionOTBN(props);
-    if (zona === 'verde' && comp.verde < comp.libre) return 'predomina la superficie sin bosque nativo categorizado';
+    if (zona === 'verde' && comp.verde < comp.libre) return 'predomina la superficie sin categoría OTBN (sin bosque nativo), que el modelo asimila a la zona verde';
     return `domina la zona ${zona}`;
 }
 

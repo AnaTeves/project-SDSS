@@ -46,7 +46,6 @@ CLASES_MAPBIOMAS = {
     22: ('Área sin vegetación', '#d4271e'),
 }
 
-ASSET_USO = 'users/lutevestessaro/Uso_Suelo_Actual_30m'
 
 
 def describir_uso(codigo, clases_excluidas):
@@ -78,13 +77,13 @@ def url_teselas_mapbiomas():
         if _cache_teselas['url'] and time.time() - _cache_teselas['creado'] < _TTL_TESELAS:
             return _cache_teselas['url']
         import ee
-        from src.gee_connector import GEEConnector
+        from src.gee_connector import GEEConnector, imagen_uso_mapbiomas
         try:
             ee.Number(1).getInfo()          # ¿ya inicializado en este proceso?
         except Exception:
             GEEConnector()
         codigos = list(CLASES_MAPBIOMAS)
-        imagen = ee.Image(ASSET_USO).remap(codigos, list(range(len(codigos))))
+        imagen = imagen_uso_mapbiomas().remap(codigos, list(range(len(codigos))))
         mapa = imagen.getMapId({'min': 0, 'max': len(codigos) - 1,
                                 'palette': [CLASES_MAPBIOMAS[c][1].lstrip('#') for c in codigos]})
         _cache_teselas.update(url=mapa['tile_fetcher'].url_format, creado=time.time())

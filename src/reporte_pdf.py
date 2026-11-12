@@ -19,6 +19,7 @@ from src.ahp_calculator import AHPCalculator
 from src.mcda_engine import MCDAEngine
 from src.parametros_edaficos import normalizar_atributo
 from src.raster_normalizer import RasterNormalizer
+from src.capas_territorio import CLASES_MAPBIOMAS
 
 PESOS_AHP_BASE = {'suelo': 0.40, 'lluvia': 0.40, 'ndvi': 0.20}
 
@@ -64,7 +65,7 @@ FUENTES = [
      'Engine y remuestreado a 30 m.'),
     ('Índice de vegetación', 'NDVI (Índice de Vegetación de Diferencia Normalizada), serie histórica 2015-2025 '
      'procesada en Google Earth Engine a 30 m de resolución.'),
-    ('Cobertura y uso del suelo', 'MapBiomas Chaco, clasificación de cobertura y uso del suelo; se utiliza la '
+    ('Cobertura y uso del suelo', 'MapBiomas Chaco, colección 5 (último año disponible), clasificación de cobertura y uso del suelo; se utiliza la '
      'clase predominante (moda) dentro del polígono.'),
     ('Censo forestal', 'Segundo Inventario Nacional de Bosques Nativos de la República Argentina (2021), Dirección '
      'Nacional de Bosques, Ministerio de Ambiente y Desarrollo Sostenible de la Nación.'),
@@ -382,11 +383,12 @@ def generar_reporte(engine, poligono_id):
     # 3.5 uso del suelo
     pdf.subtitulo('3.5 Cobertura y uso del suelo (MapBiomas)')
     clase = fila.get('val_uso_suelo')
-    if clase is None:
-        pdf.parrafo('Sin dato de cobertura para el polígono (se considera excluido).', tam=7.8)
+    if clase is None or int(clase) == 0:
+        pdf.parrafo('Sin dato de cobertura para el polígono (se considera compatible).', tam=7.8)
     else:
         excluida = int(clase) in normalizador.clases_excluidas
-        pdf.parrafo(f'Clase predominante (moda) en el polígono: código {int(clase)}. '
+        nombre_clase = CLASES_MAPBIOMAS.get(int(clase), ('clase sin nombre en la leyenda',))[0]
+        pdf.parrafo(f'Clase predominante (moda) en el polígono: {nombre_clase} (código {int(clase)}). '
                     f"{'Pertenece a las coberturas excluidas' if excluida else 'No pertenece a las coberturas excluidas'} "
                     f"(códigos excluidos: {', '.join(str(c) for c in normalizador.clases_excluidas)}).", tam=7.8)
 
