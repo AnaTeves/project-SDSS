@@ -71,8 +71,8 @@ _cache_teselas = {'url': None, 'creado': 0.0}
 _lock_gee = threading.Lock()
 
 
-def url_teselas_mapbiomas():
-    """URL {z}/{x}/{y} de Earth Engine para la capa de cobertura, renovada cada 6 horas."""
+def url_teselas_mapbiomas(engine=None):
+    """URL {z}/{x}/{y} de Earth Engine para la capa de cobertura recortada al Chaco, renovada cada 6 horas."""
     with _lock_gee:
         if _cache_teselas['url'] and time.time() - _cache_teselas['creado'] < _TTL_TESELAS:
             return _cache_teselas['url']
@@ -84,6 +84,10 @@ def url_teselas_mapbiomas():
             GEEConnector()
         codigos = list(CLASES_MAPBIOMAS)
         imagen = imagen_uso_mapbiomas().remap(codigos, list(range(len(codigos))))
+        # Recorte al contorno provincial (tabla limite_chaco), simplificado para aligerar la solicitud
+        provincia = _contorno_provincia(engine) if engine is not None else None
+        if provincia is not None:
+            imagen = imagen.clip(ee.Geometry(mapping(provincia.simplify(0.002, preserve_topology=True))))
         mapa = imagen.getMapId({'min': 0, 'max': len(codigos) - 1,
                                 'palette': [CLASES_MAPBIOMAS[c][1].lstrip('#') for c in codigos]})
         _cache_teselas.update(url=mapa['tile_fetcher'].url_format, creado=time.time())

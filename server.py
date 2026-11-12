@@ -425,7 +425,7 @@ def capa_mapbiomas():
     Engine a partir del mismo asset que usa el pipeline, junto con su leyenda y las clases excluidas.
     """
     try:
-        url = capas_territorio.url_teselas_mapbiomas()
+        url = capas_territorio.url_teselas_mapbiomas(engine)
     except Exception as e:
         print(f"No se pudo generar la capa de MapBiomas: {e}")
         raise HTTPException(status_code=503, detail="No se pudo generar la capa de cobertura en Google Earth Engine.")
